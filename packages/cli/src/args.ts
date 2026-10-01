@@ -152,7 +152,7 @@ export const HELP = `data-peek — schema checks from the terminal
 
 Usage
   data-peek doctor <connection-string> [options]
-  DATABASE_URL=postgres://… data-peek doctor
+  DATABASE_URL=postgres://… npx @data-peek/cli doctor
 
 Options
   --checks <a,b,c>     Run only these checks (default: all)

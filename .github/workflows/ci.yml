@@ -76,6 +76,6 @@ jobs:
       # bundled from packages/shared, so a change there is verified here too.
       - name: Test, typecheck, and build CLI
         run: |
-          pnpm --filter data-peek test
-          pnpm --filter data-peek typecheck
-          pnpm --filter data-peek build
+          pnpm --filter @data-peek/cli test
+          pnpm --filter @data-peek/cli typecheck
+          pnpm --filter @data-peek/cli build

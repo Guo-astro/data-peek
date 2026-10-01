@@ -3,12 +3,12 @@ title: CLI (data-peek doctor)
 description: Run data-peek's Postgres schema checks from the terminal with npx, no install required
 ---
 
-# CLI: `npx data-peek doctor`
+# CLI: `npx @data-peek/cli doctor`
 
-The `data-peek` npm package runs the same schema checks as Schema Intel in the app, from a terminal, against any Postgres database you can reach.
+The `@data-peek/cli` npm package runs the same schema checks as Schema Intel in the app, from a terminal, against any Postgres database you can reach.
 
 ```bash
-npx data-peek doctor postgres://user:pass@localhost:5432/app
+npx @data-peek/cli doctor postgres://user:pass@localhost:5432/app
 ```
 
 With no connection string it reads `DATABASE_URL`.
@@ -82,7 +82,7 @@ Fail a build when a migration drops a foreign key's index or leaves an index inv
 
 ```yaml
 - name: Schema checks
-  run: npx data-peek doctor "$DATABASE_URL" --fail-on warning
+  run: npx @data-peek/cli doctor "$DATABASE_URL" --fail-on warning
 ```
 
 ## Database support

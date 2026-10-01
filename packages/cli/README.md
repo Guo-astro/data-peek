@@ -1,9 +1,9 @@
-# data-peek
+# @data-peek/cli
 
 Schema checks for Postgres from the terminal. Nothing to install.
 
 ```bash
-npx data-peek doctor postgres://user:pass@localhost:5432/app
+npx @data-peek/cli doctor postgres://user:pass@localhost:5432/app
 ```
 
 ```
@@ -77,7 +77,7 @@ Fail the build when a migration drops a foreign key's index or leaves one invali
 
 ```yaml
 - name: Schema checks
-  run: npx data-peek doctor "$DATABASE_URL" --fail-on warning
+  run: npx @data-peek/cli doctor "$DATABASE_URL" --fail-on warning
 ```
 
 Exit codes: `0` clean or below threshold, `1` findings at or above `--fail-on`, `2` usage or connection error, or a check that could not run while `--fail-on` is set. A gate that passes because the checks never ran is not a gate.
