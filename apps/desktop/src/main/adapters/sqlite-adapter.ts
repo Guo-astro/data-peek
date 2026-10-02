@@ -37,6 +37,23 @@ import { splitStatements } from '../lib/sql-parser'
 // casting) means a SQLite version that returns an unexpected shape fails loudly at
 // the boundary instead of silently flowing `undefined` into the schema model.
 const SqliteMasterRow = z.object({ name: z.string(), type: z.string() })
+const SqliteBtreeSizeRow = z.object({
+  table_name: z.string(),
+  type: z.string(),
+  bytes: z.number()
+})
+const PragmaTableListRow = z.object({ schema: z.string(), name: z.string(), type: z.string() })
+const SqliteStat1Row = z.object({ tbl: z.string(), stat: z.string().nullable() })
+
+// As many as the Postgres adapter's `LIMIT 50`.
+const MAX_TABLE_SIZE_ROWS = 50
+
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 bytes'
+  const units = ['bytes', 'kB', 'MB', 'GB', 'TB']
+  const i = Math.floor(Math.log(bytes) / Math.log(1024))
+  return `${(bytes / Math.pow(1024, i)).toFixed(i > 0 ? 1 : 0)} ${units[i]}`
+}
 
 const SqliteTriggerRow = z.object({
   name: z.string(),
@@ -630,11 +647,112 @@ export class SQLiteAdapter implements DatabaseAdapter {
   }
 
   async getTableSizes(
-    _config: ConnectionConfig,
+    config: ConnectionConfig,
 
     _schema?: string
   ): Promise<{ dbSize: DatabaseSizeInfo; tables: TableSizeInfo[] }> {
-    throw new Error('getTableSizes not implemented for SQLite')
+    const db = this.getDb(config)
+    try {
+      const totalSizeBytes =
+        Number(db.pragma('page_count', { simple: true })) *
+        Number(db.pragma('page_size', { simple: true }))
+
+      // A virtual table such as FTS5 keeps its rows in shadow tables named
+      // `<table>_<suffix>`. Those are storage of the virtual table, not tables
+      // of their own, so their pages are counted toward it.
+      const listed = z.array(PragmaTableListRow).parse(db.prepare('PRAGMA table_list').all())
+      const virtualTables = listed
+        .filter((t) => t.schema === 'main' && t.type === 'virtual')
+        .map((t) => t.name)
+      const ownerOfShadow = new Map<string, string>()
+      for (const t of listed) {
+        if (t.schema !== 'main' || t.type !== 'shadow') continue
+        const owner = virtualTables
+          .filter((name) => t.name.startsWith(`${name}_`))
+          .sort((x, y) => y.length - x.length)[0]
+        if (owner) ownerOfShadow.set(t.name, owner)
+      }
+
+      // dbstat names each b-tree, so an index is counted toward the table that
+      // sqlite_master says it belongs to.
+      const btrees = z.array(SqliteBtreeSizeRow).parse(
+        db
+          .prepare(
+            `SELECT m.tbl_name AS table_name, m.type AS type, s.bytes AS bytes
+             FROM (SELECT name, SUM(pgsize) AS bytes FROM dbstat GROUP BY name) s
+             JOIN sqlite_master m ON m.name = s.name
+             WHERE m.type IN ('table', 'index')
+               AND m.tbl_name NOT LIKE 'sqlite_%'`
+          )
+          .all()
+      )
+      const sizes = new Map<string, { dataSizeBytes: number; indexSizeBytes: number }>()
+      for (const name of virtualTables) {
+        if ([...ownerOfShadow.values()].includes(name)) {
+          sizes.set(name, { dataSizeBytes: 0, indexSizeBytes: 0 })
+        }
+      }
+      for (const btree of btrees) {
+        const table = ownerOfShadow.get(btree.table_name) ?? btree.table_name
+        const size = sizes.get(table) ?? { dataSizeBytes: 0, indexSizeBytes: 0 }
+        if (btree.type === 'index') size.indexSizeBytes += btree.bytes
+        else size.dataSizeBytes += btree.bytes
+        sizes.set(table, size)
+      }
+
+      // Largest first, and no more than the Postgres adapter lists.
+      const largest = [...sizes.entries()]
+        .map(([table, size]) => ({
+          table,
+          ...size,
+          total: size.dataSizeBytes + size.indexSizeBytes
+        }))
+        .sort((x, y) => y.total - x.total || x.table.localeCompare(y.table))
+        .slice(0, MAX_TABLE_SIZE_ROWS)
+
+      // ANALYZE leaves a row estimate in sqlite_stat1; reading it costs nothing.
+      // Without it SQLite keeps no estimate, and only a scan can count the rows.
+      const estimates = new Map<string, number>()
+      const hasStats = db
+        .prepare(`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'sqlite_stat1'`)
+        .get()
+      if (hasStats) {
+        const stats = z
+          .array(SqliteStat1Row)
+          .parse(db.prepare('SELECT tbl, stat FROM sqlite_stat1').all())
+        for (const { tbl, stat } of stats) {
+          const rows = Number.parseInt(stat ?? '', 10)
+          if (Number.isFinite(rows)) estimates.set(tbl, Math.max(rows, estimates.get(tbl) ?? 0))
+        }
+      }
+
+      const tables: TableSizeInfo[] = largest.map((row) => {
+        const rowCountEstimate =
+          estimates.get(row.table) ??
+          Number(
+            (
+              db.prepare(`SELECT COUNT(*) AS n FROM "${row.table.replace(/"/g, '""')}"`).get() as {
+                n: number
+              }
+            ).n
+          )
+        return {
+          schema: 'main',
+          table: row.table,
+          rowCountEstimate,
+          dataSize: formatBytes(row.dataSizeBytes),
+          dataSizeBytes: row.dataSizeBytes,
+          indexSize: formatBytes(row.indexSizeBytes),
+          indexSizeBytes: row.indexSizeBytes,
+          totalSize: formatBytes(row.total),
+          totalSizeBytes: row.total
+        }
+      })
+
+      return { dbSize: { totalSize: formatBytes(totalSizeBytes), totalSizeBytes }, tables }
+    } finally {
+      db.close()
+    }
   }
 
   async getCacheStats(_config: ConnectionConfig): Promise<CacheStats> {
