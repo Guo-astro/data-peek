@@ -13,7 +13,7 @@
   "dependencies": {
     "@tanstack/react-router": "^1.170.17",
     "@tanstack/react-router-devtools": "^1.167.0",
-    "@tanstack/react-start": "^1.168.27",
+    "@tanstack/react-start": "^1.168.60",
     "@vercel/analytics": "^2.0.1",
     "framer-motion": "12.38.0",
     "fumadocs-core": "^16.10.7",
