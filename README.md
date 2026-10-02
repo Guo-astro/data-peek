@@ -288,29 +288,6 @@ pnpm lint
 pnpm build
 ```
 
-## Star History
-
-<a href="https://star-history.dera.page/#Rohithgilla12/data-peek&type=date&legend=top-left">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://star-history.dera.page/svg?repos=Rohithgilla12/data-peek&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://star-history.dera.page/svg?repos=Rohithgilla12/data-peek&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://star-history.dera.page/svg?repos=Rohithgilla12/data-peek&type=date&legend=top-left" />
- </picture>
-</a>
-
-## Sponsors
-
-<p align="center">
-  <a href="https://www.tembo.io/?utm_source=github&utm_medium=readme&utm_campaign=data_peek_sponsorship#gh-light-mode-only" target="_blank">
-    <img src="assets/tembo-dark.png#gh-light-mode-only" alt="Tembo - Goodbye Database Sprawl" width="400"/>
-  </a>
-  <a href="https://www.tembo.io/?utm_source=github&utm_medium=readme&utm_campaign=data_peek_sponsorship#gh-dark-mode-only" target="_blank">
-    <img src="assets/tembo-light.png#gh-dark-mode-only" alt="Tembo - Goodbye Database Sprawl" width="400"/>
-  </a>
-  <br/>
-  <strong><a href="https://www.tembo.io/?utm_source=github&utm_medium=readme&utm_campaign=data_peek_sponsorship" target="_blank">Tembo — Goodbye Database Sprawl</a></strong>
-</p>
-
 ## License
 
 MIT License - see [LICENSE](LICENSE) for details.
