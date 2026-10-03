@@ -23,6 +23,7 @@ import type { ResolveForRunSummary } from '@/lib/cross-tab-integration'
 import { CrossTabSubmitDialog } from '@/components/cross-tab/cross-tab-submit-dialog'
 import { SQLEditor } from '@/components/sql-editor'
 import { formatSQL } from '@/lib/sql-formatter'
+import { getSelectedSql } from '@/lib/editor-selection'
 import { generateExportFilename } from '@/lib/export'
 import { buildQualifiedTableRef, buildSelectQuery, buildCountQuery } from '@/lib/sql-helpers'
 import {
@@ -641,11 +642,11 @@ export function TabQueryEditor({ tabId }: TabQueryEditorProps) {
     }
   }, [tableSorting, tabConnection, tabId, updateTablePreviewPagination, handleRunQuery])
 
-  const handleFormatQuery = () => {
-    if (!tab || !isExecutableTab(tab) || !tab.query.trim()) return
-    const formatted = formatSQL(tab.query)
-    updateTabQuery(tabId, formatted)
-  }
+  const handleFormatQuery = useCallback(() => {
+    const t = useTabStore.getState().getTab(tabId)
+    if (!t || !isExecutableTab(t) || !t.query.trim()) return
+    updateTabQuery(tabId, formatSQL(t.query))
+  }, [tabId, updateTabQuery])
 
   const handleQueryChange = (value: string) => {
     updateTabQuery(tabId, value)
@@ -886,6 +887,22 @@ export function TabQueryEditor({ tabId }: TabQueryEditorProps) {
     () => window.api.menu.onToggleTimeMachine(handleToggleTimeMachine),
     [handleToggleTimeMachine]
   )
+
+  // Query menu items. Execute mirrors the editor's ⌘↵: run the selection if
+  // there is one, otherwise the whole query.
+  const handleMenuExecute = useCallback(() => {
+    handleRunQuery(getSelectedSql(editorRef.current))
+  }, [handleRunQuery])
+
+  const handleClearResults = useCallback(() => {
+    const t = useTabStore.getState().getTab(tabId)
+    if (!t || !isExecutableTab(t) || t.isExecuting) return
+    updateTabMultiResult(tabId, null, null)
+  }, [tabId, updateTabMultiResult])
+
+  useEffect(() => window.api.menu.onExecuteQuery(handleMenuExecute), [handleMenuExecute])
+  useEffect(() => window.api.menu.onFormatSql(handleFormatQuery), [handleFormatQuery])
+  useEffect(() => window.api.menu.onClearResults(handleClearResults), [handleClearResults])
 
   if (!tab || tab.type === 'notebook') {
     return null
