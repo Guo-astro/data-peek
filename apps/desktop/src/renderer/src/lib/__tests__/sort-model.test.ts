@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
 import {
   applySorts,
   getTypeCategory,
@@ -227,8 +227,8 @@ describe('applySorts', () => {
       [chip({ column: 'd', direction: 'asc', mode: 'byMonth' })],
       cols
     )
-    const months = sorted.map((r) => new Date(r.d).getMonth())
-    expect(months).toEqual([0, 0, 2, 2])
+    // January (in input order), then March: by the dates as written.
+    expect(sorted.map((r) => r.id)).toEqual([2, 3, 1, 4])
   })
 
   it('sorts byDayOfWeek with Monday=0…Sunday=6', () => {
@@ -238,7 +238,65 @@ describe('applySorts', () => {
       [chip({ column: 'd', direction: 'asc', mode: 'byDayOfWeek' })],
       COL_D
     )
-    expect(sorted.map((r) => new Date(r.d).getDay())).toEqual([1, 3, 0])
+    // Monday the 1st, Wednesday the 3rd, Sunday the 7th.
+    expect(sorted.map((r) => r.d)).toEqual(['2024-04-01', '2024-04-03', '2024-04-07'])
+  })
+
+  describe('date-only values west of UTC (#290)', () => {
+    // `new Date('2024-03-01')` is UTC midnight, which is the evening of
+    // 29 February in Chicago: read in local time it lands a day early.
+    beforeAll(() => {
+      vi.stubEnv('TZ', 'America/Chicago')
+    })
+    afterAll(() => {
+      vi.unstubAllEnvs()
+    })
+
+    it('keeps the first of a month in that month', () => {
+      expect(new Date('2024-03-01').getMonth()).toBe(1) // the zone is in effect
+      const rows = [
+        { id: 1, d: '2024-03-15' },
+        { id: 2, d: '2024-01-20' },
+        { id: 3, d: '2023-01-05' },
+        { id: 4, d: '2024-03-01' }
+      ]
+      const sorted = applySorts(
+        rows,
+        [chip({ column: 'd', direction: 'asc', mode: 'byMonth' })],
+        COL_D
+      )
+      expect(sorted.map((r) => r.id)).toEqual([2, 3, 1, 4])
+    })
+
+    it('puts a date on its own weekday', () => {
+      const rows = [{ d: '2024-04-07' }, { d: '2024-04-01' }, { d: '2024-04-03' }]
+      const sorted = applySorts(
+        rows,
+        [chip({ column: 'd', direction: 'asc', mode: 'byDayOfWeek' })],
+        COL_D
+      )
+      expect(sorted.map((r) => r.d)).toEqual(['2024-04-01', '2024-04-03', '2024-04-07'])
+    })
+
+    it('reads a date-only value as midnight for byTime', () => {
+      const rows = [{ d: '2024-01-01T03:00:00' }, { d: '2024-06-15' }]
+      const sorted = applySorts(
+        rows,
+        [chip({ column: 'd', direction: 'asc', mode: 'byTime' })],
+        COL_D
+      )
+      expect(sorted.map((r) => r.d)).toEqual(['2024-06-15', '2024-01-01T03:00:00'])
+    })
+
+    it('leaves a value with a time as it was', () => {
+      const rows = [{ d: '2024-03-01 00:30:00' }, { d: '2024-02-29 23:30:00' }]
+      const sorted = applySorts(
+        rows,
+        [chip({ column: 'd', direction: 'asc', mode: 'byMonth' })],
+        COL_D
+      )
+      expect(sorted.map((r) => r.d)).toEqual(['2024-02-29 23:30:00', '2024-03-01 00:30:00'])
+    })
   })
 
   it('sorts byTime ignoring the date component', () => {
@@ -263,6 +321,23 @@ describe('applySorts', () => {
       COL_D
     )
     expect(sorted.map((r) => r.d)).toEqual(['2024-02-01', '2024-05-01', 'not-a-date'])
+  })
+
+  it('routes out-of-range date-only values through the null path instead of rolling them over', () => {
+    // new Date(2024, 12, 1) is January 2025 and new Date(2024, 1, 30) is March 1;
+    // neither is a real calendar day, so neither may borrow another month's place.
+    const rows = [
+      { d: '2024-13-01' },
+      { d: '2024-05-01' },
+      { d: '2024-02-30' },
+      { d: '2024-02-01' }
+    ]
+    const sorted = applySorts(
+      rows,
+      [chip({ column: 'd', direction: 'asc', mode: 'byMonth', nullsPosition: 'last' })],
+      COL_D
+    )
+    expect(sorted.map((r) => r.d)).toEqual(['2024-02-01', '2024-05-01', '2024-13-01', '2024-02-30'])
   })
 
   it('preserves input order for ties (stable sort)', () => {

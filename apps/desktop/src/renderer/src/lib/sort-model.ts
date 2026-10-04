@@ -228,9 +228,30 @@ function mulberry32(seed: number): () => number {
   }
 }
 
+const DATE_ONLY = /^(\d{4})-(\d{2})-(\d{2})$/
+
+/**
+ * A cell as a local date. `new Date('2024-03-01')` is UTC midnight, so west of
+ * UTC its local month, weekday and hour are the previous evening's. A value
+ * with no time is a calendar day, so it is read by its own fields.
+ */
+function parseCellDate(v: unknown): Date {
+  const text = String(v)
+  const dateOnly = DATE_ONLY.exec(text)
+  if (dateOnly) {
+    const [year, month, day] = [Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3])]
+    const d = new Date(year, month, day)
+    // The Date constructor rolls 2024-13-01 into 2025 and 2024-02-30 into
+    // March; a day that isn't on the calendar is invalid, not another day.
+    const real = d.getFullYear() === year && d.getMonth() === month && d.getDate() === day
+    return real ? d : new Date(Number.NaN)
+  }
+  return new Date(text)
+}
+
 function monthOfValue(v: unknown): number {
   if (v == null) return -1
-  const d = new Date(String(v))
+  const d = parseCellDate(v)
   const t = d.getTime()
   if (Number.isNaN(t)) return -1
   return d.getMonth()
@@ -238,7 +259,7 @@ function monthOfValue(v: unknown): number {
 
 function dayOfWeekOfValue(v: unknown): number {
   if (v == null) return -1
-  const d = new Date(String(v))
+  const d = parseCellDate(v)
   const t = d.getTime()
   if (Number.isNaN(t)) return -1
   return (d.getDay() + 6) % 7
@@ -246,7 +267,7 @@ function dayOfWeekOfValue(v: unknown): number {
 
 function timeOfDayOfValue(v: unknown): number {
   if (v == null) return -1
-  const d = new Date(String(v))
+  const d = parseCellDate(v)
   const t = d.getTime()
   if (Number.isNaN(t)) return -1
   return d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds()
