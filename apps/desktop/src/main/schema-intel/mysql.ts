@@ -5,6 +5,7 @@ const DEFAULT_MYSQL_CHECKS: SchemaIntelCheckId[] = [
   'tables_without_pk',
   'missing_fk_indexes',
   'duplicate_indexes',
+  'unused_indexes',
   'nullable_fks'
 ]
 
@@ -215,6 +216,186 @@ async function checkNullableFks(
   })
 }
 
+function names(list: unknown): string[] {
+  return String(list ?? '')
+    .split(',')
+    .filter(Boolean)
+}
+
+/** Whether `columns` are the first columns of `index`, in order. */
+function leads(index: string[], columns: string[]): boolean {
+  return columns.every((column, i) => index[i] === column)
+}
+
+// Non-unique indexes with no counted read, from either source. `fk_columns` is
+// what a foreign key can match: an expression part has no column name and a
+// prefix part cannot serve a key, so '' keeps each one's place. Full-text
+// indexes are left out because reads through them are never counted. So is a
+// table that setup_objects keeps from being counted (the most specific of
+// schema.table, schema.% and %.% decides), since its earlier counts stay on
+// record while new reads are not added. And so is a table with nothing
+// counted at all, whose counts have restarted and say nothing yet.
+function unusedIndexesSql(source: string, schema: string, table: string, index: string): string {
+  return `
+    SELECT
+      u.${schema} AS schema_name,
+      u.${table}  AS table_name,
+      u.${index}  AS index_name,
+      GROUP_CONCAT(IFNULL(s.COLUMN_NAME, '') ORDER BY s.SEQ_IN_INDEX) AS columns,
+      GROUP_CONCAT(
+        IF(s.SUB_PART IS NULL, IFNULL(s.COLUMN_NAME, ''), '') ORDER BY s.SEQ_IN_INDEX
+      ) AS fk_columns
+    FROM ${source} u
+    JOIN information_schema.STATISTICS s
+      ON s.TABLE_SCHEMA = u.${schema}
+     AND s.TABLE_NAME   = u.${table}
+     AND s.INDEX_NAME   = u.${index}
+    WHERE u.${schema} = ?
+      ${source.startsWith('sys.') ? '' : 'AND u.COUNT_STAR = 0'}
+      AND 'YES' = (
+        SELECT o.ENABLED
+        FROM performance_schema.setup_objects o
+        WHERE o.OBJECT_TYPE = 'TABLE'
+          AND (
+            (o.OBJECT_SCHEMA = u.${schema} AND o.OBJECT_NAME IN (u.${table}, '%'))
+            OR (o.OBJECT_SCHEMA = '%' AND o.OBJECT_NAME = '%')
+          )
+        ORDER BY o.OBJECT_SCHEMA = u.${schema} DESC, o.OBJECT_NAME = u.${table} DESC
+        LIMIT 1
+      )
+      AND EXISTS (
+        SELECT 1
+        FROM performance_schema.table_io_waits_summary_by_index_usage counted
+        WHERE counted.OBJECT_SCHEMA = u.${schema}
+          AND counted.OBJECT_NAME   = u.${table}
+          AND counted.COUNT_STAR > 0
+      )
+    GROUP BY u.${schema}, u.${table}, u.${index}
+    HAVING MAX(s.NON_UNIQUE) = 1 -- neither PRIMARY nor a unique index
+       AND MAX(s.INDEX_TYPE = 'FULLTEXT') = 0
+    ORDER BY u.${table}, u.${index}
+    `
+}
+
+async function checkUnusedIndexes(
+  conn: mysql.Connection,
+  schema: string
+): Promise<SchemaIntelFinding[]> {
+  // With performance_schema off, both sources below answer with no rows and
+  // no error, which would read as "all used". With table reads not
+  // instrumented, or the global consumer off, every count stays at 0 and an
+  // index in use reads as unused.
+  const [state] = await runQuery(
+    conn,
+    `
+    SELECT
+      @@performance_schema AS enabled,
+      (SELECT ENABLED FROM performance_schema.setup_instruments
+        WHERE NAME = 'wait/io/table/sql/handler') AS instrumented,
+      (SELECT ENABLED FROM performance_schema.setup_consumers
+        WHERE NAME = 'global_instrumentation') AS collecting
+    `
+  )
+  if (Number(state?.enabled) !== 1) {
+    throw new Error('performance_schema is off, so MySQL keeps no count of index reads')
+  }
+  if (String(state?.instrumented) !== 'YES') {
+    throw new Error(
+      'The wait/io/table/sql/handler instrument is disabled, so MySQL is not counting index reads'
+    )
+  }
+  if (String(state?.collecting) !== 'YES') {
+    throw new Error(
+      'The global_instrumentation consumer is disabled, so MySQL is not counting index reads'
+    )
+  }
+
+  let rows: Row[]
+  try {
+    rows = await runQuery(
+      conn,
+      unusedIndexesSql('sys.schema_unused_indexes', 'object_schema', 'object_name', 'index_name'),
+      [schema]
+    )
+  } catch {
+    // No sys schema (older MariaDB), or no right to read it. The view is built
+    // on this table, so read it directly.
+    rows = await runQuery(
+      conn,
+      unusedIndexesSql(
+        'performance_schema.table_io_waits_summary_by_index_usage',
+        'OBJECT_SCHEMA',
+        'OBJECT_NAME',
+        'INDEX_NAME'
+      ),
+      [schema]
+    )
+  }
+
+  // An index a foreign key needs, on either end, is left out: MySQL refuses to
+  // drop it (error 1553), and InnoDB's own lookups through it are not counted,
+  // so "never read" says nothing about it. On the table a key is declared on,
+  // that is an index led by the key's columns. On the table it points at,
+  // InnoDB also counts the clustered key it appends to every secondary index,
+  // so an index that only starts the referenced columns may be the one in use;
+  // those are left out too, without working out which key is the clustered one.
+  const foreignKeys = await runQuery(
+    conn,
+    `
+    SELECT
+      kcu.TABLE_SCHEMA            AS schema_name,
+      kcu.TABLE_NAME              AS table_name,
+      GROUP_CONCAT(kcu.COLUMN_NAME ORDER BY kcu.ORDINAL_POSITION) AS columns,
+      kcu.REFERENCED_TABLE_SCHEMA AS referenced_schema_name,
+      kcu.REFERENCED_TABLE_NAME   AS referenced_table_name,
+      GROUP_CONCAT(kcu.REFERENCED_COLUMN_NAME ORDER BY kcu.ORDINAL_POSITION) AS referenced_columns
+    FROM information_schema.KEY_COLUMN_USAGE kcu
+    WHERE kcu.REFERENCED_TABLE_NAME IS NOT NULL
+      AND (kcu.TABLE_SCHEMA = ? OR kcu.REFERENCED_TABLE_SCHEMA = ?)
+    GROUP BY
+      kcu.CONSTRAINT_SCHEMA, kcu.CONSTRAINT_NAME, kcu.TABLE_SCHEMA, kcu.TABLE_NAME,
+      kcu.REFERENCED_TABLE_SCHEMA, kcu.REFERENCED_TABLE_NAME
+    `,
+    [schema, schema]
+  )
+  const needed = foreignKeys.flatMap((fk) => [
+    {
+      schema: String(fk.schema_name),
+      table: String(fk.table_name),
+      columns: names(fk.columns),
+      referenced: false
+    },
+    {
+      schema: String(fk.referenced_schema_name),
+      table: String(fk.referenced_table_name),
+      columns: names(fk.referenced_columns),
+      referenced: true
+    }
+  ])
+
+  const findings: SchemaIntelFinding[] = []
+  for (const row of rows) {
+    const s = String(row.schema_name)
+    const t = String(row.table_name)
+    const indexName = String(row.index_name)
+    const keyParts = String(row.fk_columns ?? '').split(',')
+    const serves = (n: (typeof needed)[number]): boolean =>
+      leads(keyParts, n.columns) || (n.referenced && leads(n.columns, keyParts))
+    if (needed.some((n) => n.schema === s && n.table === t && serves(n))) continue
+    findings.push({
+      checkId: 'unused_indexes',
+      severity: 'info',
+      title: `${s}.${t}.${indexName} has no recorded reads`,
+      detail:
+        'performance_schema has counted no reads through this index since its counts last restarted: when MySQL started, when the table was last altered, or when the summary table was truncated. If that covers a normal workload, it is a candidate to drop. Altering the table, which dropping one of its indexes does, restarts the count for the others. Unique and full-text indexes, indexes a foreign key needs, and tables whose reads are not being counted are not listed.',
+      entity: { schema: s, name: indexName, kind: 'index' },
+      metadata: { table: t, columns: names(row.columns) },
+      suggestedSql: `ALTER TABLE ${qualified(s, t)} DROP INDEX ${qid(indexName)};`
+    })
+  }
+  return findings
+}
+
 const CHECK_RUNNERS: Partial<
   Record<
     SchemaIntelCheckId,
@@ -224,6 +405,7 @@ const CHECK_RUNNERS: Partial<
   tables_without_pk: checkTablesWithoutPk,
   missing_fk_indexes: checkMissingFkIndexes,
   duplicate_indexes: checkDuplicateIndexes,
+  unused_indexes: checkUnusedIndexes,
   nullable_fks: checkNullableFks
 }
 
