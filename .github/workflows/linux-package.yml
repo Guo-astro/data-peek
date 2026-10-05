@@ -1,0 +1,60 @@
+name: Linux package
+
+# Builds the .deb and launches the installed app on Ubuntu with the
+# user-namespace restriction on, the way Ubuntu 24.04+ ships. The e2e suite
+# runs Electron from node_modules, never the installed package, so it could not
+# catch a package that crashes on a stock Ubuntu (issue #297).
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - apps/desktop/electron-builder.yml
+      - apps/desktop/package.json
+      - apps/desktop/build/**
+      - apps/desktop/scripts/smoke-test-linux-deb.sh
+      - pnpm-lock.yaml
+      - .github/workflows/linux-package.yml
+      - .github/workflows/build.yml
+      - .github/workflows/build-artifacts.yml
+  workflow_dispatch:
+
+concurrency:
+  group: linux-package-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deb-smoke:
+    name: .deb installs and launches on Ubuntu
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build the .deb
+        working-directory: apps/desktop
+        run: |
+          pnpm exec electron-vite build
+          pnpm exec electron-builder --linux deb -c.productName=data-peek --publish never
+
+      - name: Install xvfb
+        run: sudo apt-get update -q && sudo apt-get install -y -q xvfb
+
+      - name: Smoke test the .deb
+        run: apps/desktop/scripts/smoke-test-linux-deb.sh apps/desktop/dist/data-peek-*-amd64.deb
