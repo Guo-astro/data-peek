@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import mysql from 'mysql2/promise'
 import { SCHEMA_INTEL_CHECKS } from '@shared/index'
+import { AGG_SEPARATOR } from '@shared/schema-intel/sql-safety'
 import { runMysqlSchemaIntel } from '../schema-intel/mysql'
 
 type Row = Record<string, unknown>
@@ -13,6 +14,8 @@ interface Server {
   sysView?: Row[] | Error
   indexUsage?: Row[]
   foreignKeys?: Row[]
+  tablesWithoutPk?: Row[]
+  nullableFks?: Row[]
 }
 
 /** A connection that answers the check's queries from canned rows. */
@@ -37,11 +40,24 @@ function connection(server: Server): { conn: mysql.Connection; asked: string[] }
         return [server.sysView ?? []]
       }
       if (sql.includes('table_io_waits_summary_by_index_usage')) return [server.indexUsage ?? []]
+      if (sql.includes("IS_NULLABLE = 'YES'")) return [server.nullableFks ?? []]
+      if (sql.includes('DATA_LENGTH')) return [server.tablesWithoutPk ?? []]
       if (sql.includes('KEY_COLUMN_USAGE')) return [server.foreignKeys ?? []]
       throw new Error(`unexpected query: ${sql}`)
     }
   }
   return { conn: conn as unknown as mysql.Connection, asked }
+}
+
+/**
+ * Renders a name list the way `GROUP_CONCAT ... SEPARATOR 0x1F` does.
+ *
+ * The fixtures keep writing `a,b` for readability, where `,` stands for the
+ * separator and not for part of a name. A name that really contains a comma is
+ * written out in full, bypassing this helper.
+ */
+function payload(names: string): string {
+  return names.split(',').join(AGG_SEPARATOR)
 }
 
 /** `fkColumns` is what a foreign key can match: '' for a prefix or expression part. */
@@ -50,8 +66,8 @@ function unused(table: string, index: string, columns: string, fkColumns = colum
     schema_name: 'shop',
     table_name: table,
     index_name: index,
-    columns,
-    fk_columns: fkColumns
+    columns: payload(columns),
+    fk_columns: payload(fkColumns)
   }
 }
 
@@ -59,10 +75,10 @@ function foreignKey(table: string, columns: string, parent: string, parentColumn
   return {
     schema_name: 'shop',
     table_name: table,
-    columns,
+    columns: payload(columns),
     referenced_schema_name: 'shop',
     referenced_table_name: parent,
-    referenced_columns: parentColumns
+    referenced_columns: payload(parentColumns)
   }
 }
 
@@ -610,6 +626,91 @@ describe.skipIf(!offUrl)('MySQL unused_indexes with performance_schema off', () 
     } finally {
       await conn.query(`DROP DATABASE IF EXISTS ${database}`)
       await conn.end()
+    }
+  })
+})
+
+describe('MySQL suggested SQL safety', () => {
+  it('keeps a line break in a table name from ending the comment', async () => {
+    const { conn } = connection({
+      tablesWithoutPk: [
+        {
+          schema_name: 'shop',
+          table_name: 'audit\nDROP TABLE users;--',
+          estimated_rows: 1,
+          total_size_bytes: 1
+        }
+      ]
+    })
+
+    const report = await runMysqlSchemaIntel(conn, 'shop', ['tables_without_pk'])
+
+    // The injected statement must not become executable SQL in the suggestion.
+    const suggested = report.findings[0].suggestedSql ?? ''
+    expect(suggested.split('\n').every((line) => line.startsWith('-- '))).toBe(true)
+  })
+
+  it('keeps a comma inside a column name intact', async () => {
+    // The payload carries one name that happens to contain a comma. Joining on
+    // a comma would report this as the two columns `region` and `code`.
+    const { conn } = connection({
+      nullableFks: [
+        {
+          schema_name: 'shop',
+          table_name: 'orders',
+          constraint_name: 'fk_orders_region',
+          columns: 'region,code'
+        }
+      ]
+    })
+
+    const report = await runMysqlSchemaIntel(conn, 'shop', ['nullable_fks'])
+
+    const [finding] = report.findings
+    expect(finding?.metadata?.columns).toEqual(['region,code'])
+    expect(finding?.title).toBe('shop.orders(region,code) is a nullable foreign key')
+  })
+})
+
+describe('MySQL aggregate separator', () => {
+  it('passes a separator literal rather than an expression MySQL rejects', async () => {
+    // `GROUP_CONCAT ... SEPARATOR` accepts only a string or hex literal. An
+    // expression such as `CHAR(31)` is a syntax error (ERROR 1064), and because
+    // a failing catalog query degrades into a skipped check, that mistake would
+    // hide the check rather than fail it — the canned rows below cannot catch it,
+    // since they never reach a server. So drive every check and assert on the SQL
+    // that actually goes out.
+    const checks = [
+      'tables_without_pk',
+      'missing_fk_indexes',
+      'duplicate_indexes',
+      'unused_indexes',
+      'nullable_fks'
+    ] as const
+    const sent: string[] = []
+
+    for (const check of checks) {
+      const { conn, asked } = connection({})
+      try {
+        await runMysqlSchemaIntel(conn, 'shop', [check])
+      } catch {
+        // A check whose follow-up query the canned connection does not answer
+        // still renders its aggregate first; keep whatever reached the server.
+      }
+      sent.push(...asked)
+    }
+
+    const aggregates = sent.filter((sql) => sql.includes('GROUP_CONCAT'))
+    expect(aggregates.length).toBeGreaterThan(0)
+
+    for (const sql of aggregates) {
+      const literals = [...sql.matchAll(/SEPARATOR\s+(\S+?)\)/g)].map(([, literal]) => literal)
+      expect(literals.length).toBeGreaterThan(0)
+      for (const literal of literals) {
+        expect(literal, `SEPARATOR must be a literal, got "${literal}" in: ${sql}`).toMatch(
+          /^(0x[0-9A-Fa-f]+|'[^']*')$/
+        )
+      }
     }
   })
 })
