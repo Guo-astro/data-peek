@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Database } from 'lucide-react'
 import { usePanelCollapse } from '@/hooks/use-panel-collapse'
+import { useCapabilities } from '@/hooks/use-capabilities'
 
 import {
   useTabStore,
@@ -22,7 +23,7 @@ import {
 import type { ResolveForRunSummary } from '@/lib/cross-tab-integration'
 import { CrossTabSubmitDialog } from '@/components/cross-tab/cross-tab-submit-dialog'
 import { SQLEditor } from '@/components/sql-editor'
-import { formatSQL } from '@/lib/sql-formatter'
+import { formatSQL, formatterLanguage } from '@/lib/sql-formatter'
 import { getSelectedSql } from '@/lib/editor-selection'
 import { generateExportFilename } from '@/lib/export'
 import { buildQualifiedTableRef, buildSelectQuery, buildCountQuery } from '@/lib/sql-helpers'
@@ -127,6 +128,7 @@ export function TabQueryEditor({ tabId }: TabQueryEditorProps) {
   const tabConnection = tab?.connectionId
     ? connections.find((c) => c.id === tab.connectionId)
     : null
+  const can = useCapabilities(tabConnection?.dbType)
 
   // Telemetry, benchmark, EXPLAIN, and performance-analysis state (extracted to hook)
   const {
@@ -645,8 +647,11 @@ export function TabQueryEditor({ tabId }: TabQueryEditorProps) {
   const handleFormatQuery = useCallback(() => {
     const t = useTabStore.getState().getTab(tabId)
     if (!t || !isExecutableTab(t) || !t.query.trim()) return
-    updateTabQuery(tabId, formatSQL(t.query))
-  }, [tabId, updateTabQuery])
+    updateTabQuery(
+      tabId,
+      formatSQL(t.query, { language: formatterLanguage(tabConnection?.dbType) })
+    )
+  }, [tabId, updateTabQuery, tabConnection?.dbType])
 
   const handleQueryChange = (value: string) => {
     updateTabQuery(tabId, value)
@@ -661,7 +666,7 @@ export function TabQueryEditor({ tabId }: TabQueryEditorProps) {
     const editor = editorRef.current
     const monaco = monacoRef.current
     if (!editor || !monaco || !editorMounted) return
-    if (tabConnection?.dbType !== 'postgresql') return
+    if (!can.stepThrough) return
 
     const disposable = editor.addAction({
       id: 'datapeek.start-step',
@@ -673,7 +678,7 @@ export function TabQueryEditor({ tabId }: TabQueryEditorProps) {
     })
 
     return () => disposable.dispose()
-  }, [handleStartStep, editorMounted, tabConnection?.dbType])
+  }, [handleStartStep, editorMounted, can.stepThrough])
 
   useEffect(() => {
     const editor = editorRef.current
@@ -818,7 +823,10 @@ export function TabQueryEditor({ tabId }: TabQueryEditorProps) {
         sorting: tableSorting,
         limit: tab.pageSize
       })
-      updateTabQuery(tabId, formatSQL(newQuery))
+      updateTabQuery(
+        tabId,
+        formatSQL(newQuery, { language: formatterLanguage(tabConnection?.dbType) })
+      )
       setTimeout(() => handleRunQuery(), 100)
 
       if (!opts.offerUndo) return
@@ -1053,8 +1061,8 @@ export function TabQueryEditor({ tabId }: TabQueryEditorProps) {
               snippets={allSnippets}
               readOnly={!!stepSession}
               glyphMargin={!!stepSession}
-              crossTabRefs={crossTabRefs}
-              crossTabDialect={tabConnection?.dbType}
+              crossTabRefs={can.crossTabRefs ? crossTabRefs : []}
+              crossTabDialect={can.crossTabRefs ? tabConnection?.dbType : undefined}
               onMount={(editor, monaco) => {
                 editorRef.current = editor
                 monacoRef.current = monaco

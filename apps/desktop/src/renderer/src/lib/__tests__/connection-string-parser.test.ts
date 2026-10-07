@@ -110,3 +110,53 @@ describe('parseConnectionString — default schema', () => {
     })
   })
 })
+
+describe('parseConnectionString — ClickHouse', () => {
+  it('fills the HTTP port, default user and default database', () => {
+    const parsed = parseConnectionString('clickhouse://ch.example.com', 'clickhouse')
+    expect(parsed).toMatchObject({
+      host: 'ch.example.com',
+      port: '8123',
+      user: 'default',
+      database: 'default',
+      ssl: false
+    })
+    expect(parsed?.schema).toBeUndefined()
+  })
+
+  it('reads user, password, port and database from the URL', () => {
+    const parsed = parseConnectionString('clickhouse://u:p%40ss@h:8124/analytics', 'clickhouse')
+    expect(parsed).toMatchObject({
+      user: 'u',
+      password: 'p@ss',
+      port: '8124',
+      database: 'analytics'
+    })
+  })
+
+  it('turns on ssl for clickhouses:// and ?secure=1', () => {
+    expect(parseConnectionString('clickhouses://h/db', 'clickhouse')?.ssl).toBe(true)
+    expect(parseConnectionString('clickhouse://h/db?secure=1', 'clickhouse')?.ssl).toBe(true)
+    expect(parseConnectionString('clickhouse://h/db?secure=true', 'clickhouse')?.ssl).toBe(true)
+    expect(parseConnectionString('clickhouse://h/db?secure=0', 'clickhouse')?.ssl).toBe(false)
+  })
+
+  it('defaults to the HTTPS port 8443 when TLS is on and no port is given', () => {
+    expect(parseConnectionString('clickhouses://h/db', 'clickhouse')?.port).toBe('8443')
+    expect(parseConnectionString('clickhouse://h/db?secure=1', 'clickhouse')?.port).toBe('8443')
+    expect(parseConnectionString('clickhouse://h/db?secure=true', 'clickhouse')?.port).toBe('8443')
+    expect(parseConnectionString('clickhouse://h/db?secure=0', 'clickhouse')?.port).toBe('8123')
+    expect(parseConnectionString('clickhouse://h/db', 'clickhouse')?.port).toBe('8123')
+  })
+
+  it('keeps an explicit port over the TLS default', () => {
+    expect(parseConnectionString('clickhouses://h:9440/db', 'clickhouse')?.port).toBe('9440')
+    expect(parseConnectionString('clickhouse://h:8124/db?secure=1', 'clickhouse')?.port).toBe(
+      '8124'
+    )
+  })
+
+  it('rejects a non-ClickHouse protocol', () => {
+    expect(parseConnectionString('postgresql://h/db', 'clickhouse')).toBeNull()
+  })
+})

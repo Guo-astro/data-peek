@@ -1,6 +1,7 @@
 import { ipcMain } from 'electron'
 import type {
   ConnectionConfig,
+  DatabaseType,
   EditBatch,
   EditResult,
   QueryTelemetry,
@@ -19,6 +20,7 @@ import {
   type CachedSchema
 } from '../schema-cache'
 import { createLogger } from '../lib/logger'
+import { requireCapability } from '../lib/capability-guard'
 import { annotateSslError } from '../lib/ssl-error'
 import { telemetryCollector } from '../telemetry-collector'
 import { analyzeQueryPerformance } from '../performance-analyzer'
@@ -272,6 +274,11 @@ export function registerQueryHandlers(): void {
       log.debug('Received edit batch', batch.context)
       log.debug('Operations count:', batch.operations.length)
 
+      try {
+        requireCapability(config, 'inlineEdit')
+      } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : String(error) }
+      }
       const adapter = getAdapter(config)
       const dbType = config.dbType || 'postgresql'
       const result: EditResult = {
@@ -406,12 +413,13 @@ export function registerQueryHandlers(): void {
   // Preview SQL for edit operations (without executing)
   ipcMain.handle(
     'db:preview-sql',
-    (_, { batch, dbType }: { batch: EditBatch; dbType?: string }) => {
+    (_, { batch, dbType }: { batch: EditBatch; dbType?: DatabaseType }) => {
       try {
-        const targetDbType = (dbType || 'postgresql') as 'postgresql' | 'mysql' | 'sqlite' | 'mssql'
+        const target = { dbType: dbType || 'postgresql' }
+        requireCapability(target, 'inlineEdit')
         const previews = batch.operations.map((op) => ({
           operationId: op.id,
-          sql: buildPreviewSql(op, batch.context, targetDbType)
+          sql: buildPreviewSql(op, batch.context, target.dbType)
         }))
         return { success: true, data: previews }
       } catch (error: unknown) {
@@ -634,6 +642,7 @@ export function registerQueryHandlers(): void {
     'db:begin-transaction',
     async (_, { config, sessionId }: { config: ConnectionConfig; sessionId: string }) => {
       try {
+        requireCapability(config, 'transactions')
         const adapter = getAdapter(config)
         if (adapter.beginTransaction) {
           await adapter.beginTransaction(config, sessionId)
@@ -654,6 +663,7 @@ export function registerQueryHandlers(): void {
     'db:commit-transaction',
     async (_, { config, sessionId }: { config: ConnectionConfig; sessionId: string }) => {
       try {
+        requireCapability(config, 'transactions')
         const adapter = getAdapter(config)
         if (adapter.commitTransaction) {
           await adapter.commitTransaction(config, sessionId)
@@ -673,6 +683,7 @@ export function registerQueryHandlers(): void {
     'db:rollback-transaction',
     async (_, { config, sessionId }: { config: ConnectionConfig; sessionId: string }) => {
       try {
+        requireCapability(config, 'transactions')
         const adapter = getAdapter(config)
         if (adapter.rollbackTransaction) {
           await adapter.rollbackTransaction(config, sessionId)

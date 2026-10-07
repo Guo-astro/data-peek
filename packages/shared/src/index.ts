@@ -16,6 +16,7 @@ export {
   isSQLKeyword,
   type SQLDialect,
 } from "./sql-escape";
+export * from "./db-capabilities";
 
 /**
  * Base URL for the data-peek website
@@ -758,7 +759,12 @@ export interface SSHConfig {
 /**
  * Supported database types
  */
-export type DatabaseType = "postgresql" | "mysql" | "sqlite" | "mssql";
+export type DatabaseType =
+  | "postgresql"
+  | "mysql"
+  | "sqlite"
+  | "mssql"
+  | "clickhouse";
 
 /**
  * Field metadata from query results
@@ -770,6 +776,20 @@ export interface QueryField {
   dataType: string;
   /** Original database-specific type ID (for advanced use cases) */
   dataTypeID?: number;
+}
+
+export interface TextExplainPlan {
+  kind: "text";
+  lines: string[];
+}
+
+export function isTextExplainPlan(plan: unknown): plan is TextExplainPlan {
+  return (
+    typeof plan === "object" &&
+    plan !== null &&
+    (plan as TextExplainPlan).kind === "text" &&
+    Array.isArray((plan as TextExplainPlan).lines)
+  );
 }
 
 export interface QueryResult {
@@ -2788,6 +2808,13 @@ export const SCHEMA_INTEL_CHECKS: readonly SchemaIntelCheckDefinition[] = [
     supportedDbTypes: ["postgresql", "mysql", "mssql", "sqlite"],
   },
 ];
+
+export function supportsSchemaIntel(dbType: DatabaseType | undefined): boolean {
+  return (
+    dbType !== undefined &&
+    SCHEMA_INTEL_CHECKS.some((c) => c.supportedDbTypes.includes(dbType))
+  );
+}
 
 // ── PostgreSQL Export/Import (pg_dump / pg_restore) ──────────────────────────
 

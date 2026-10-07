@@ -42,6 +42,7 @@ import {
 } from '@/components/health-share-content'
 import { useConnectionStore } from '@/stores/connection-store'
 import { useHealthStore } from '@/stores/health-store'
+import { useCapabilities } from '@/hooks/use-capabilities'
 import { useTabStore } from '@/stores/tab-store'
 
 interface HealthMonitorProps {
@@ -82,6 +83,7 @@ export function HealthMonitor({ tabId }: HealthMonitorProps) {
   // quiet empty state instead of the error text the store carries back. Table Sizes
   // is unaffected — the adapter computes it from the database file itself.
   const isEmbedded = connection?.dbType === 'sqlite'
+  const can = useCapabilities(connection?.dbType)
 
   const activeQueries = useHealthStore((s) => s.activeQueries)
   const tableSizes = useHealthStore((s) => s.tableSizes)
@@ -197,10 +199,10 @@ export function HealthMonitor({ tabId }: HealthMonitorProps) {
               <CardTitle className="flex items-center justify-between text-sm">
                 Active Queries
                 <div className="flex items-center gap-1">
-                  {!isEmbedded && isLoading.activeQueries && (
+                  {can.healthActiveQueries && isLoading.activeQueries && (
                     <Loader2 className="size-3 animate-spin" />
                   )}
-                  {!isEmbedded && (
+                  {can.healthActiveQueries && (
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <Button
@@ -221,9 +223,11 @@ export function HealthMonitor({ tabId }: HealthMonitorProps) {
               </CardTitle>
             </CardHeader>
             <CardContent className="flex-1 overflow-auto p-0 px-3 pb-3">
-              {isEmbedded ? (
+              {!can.healthActiveQueries ? (
                 <p className="py-4 text-center text-xs text-muted-foreground">
-                  SQLite has no server process, so there are no active queries to show
+                  {isEmbedded
+                    ? 'SQLite has no server process, so there are no active queries to show'
+                    : 'Active queries are not available for this database'}
                 </p>
               ) : errors.activeQueries ? (
                 <p className="text-xs text-destructive">{errors.activeQueries}</p>
@@ -393,10 +397,10 @@ export function HealthMonitor({ tabId }: HealthMonitorProps) {
               <CardTitle className="flex items-center justify-between text-sm">
                 Cache Hit Ratios
                 <div className="flex items-center gap-1">
-                  {!isEmbedded && isLoading.cacheStats && (
+                  {can.healthCacheStats && isLoading.cacheStats && (
                     <Loader2 className="size-3 animate-spin" />
                   )}
-                  {!isEmbedded && (
+                  {can.healthCacheStats && (
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <Button
@@ -417,9 +421,11 @@ export function HealthMonitor({ tabId }: HealthMonitorProps) {
               </CardTitle>
             </CardHeader>
             <CardContent className="flex-1 overflow-auto px-3 pb-3">
-              {isEmbedded ? (
+              {!can.healthCacheStats ? (
                 <p className="py-4 text-center text-xs text-muted-foreground">
-                  SQLite has no server process, so there is no cache to report
+                  {isEmbedded
+                    ? 'SQLite has no server process, so there is no cache to report'
+                    : 'Cache statistics are not available for this database'}
                 </p>
               ) : errors.cacheStats ? (
                 <p className="text-xs text-destructive">{errors.cacheStats}</p>
@@ -485,8 +491,10 @@ export function HealthMonitor({ tabId }: HealthMonitorProps) {
               <CardTitle className="flex items-center justify-between text-sm">
                 Locks &amp; Blocking
                 <div className="flex items-center gap-1">
-                  {!isEmbedded && isLoading.locks && <Loader2 className="size-3 animate-spin" />}
-                  {!isEmbedded && (
+                  {can.healthLocks && isLoading.locks && (
+                    <Loader2 className="size-3 animate-spin" />
+                  )}
+                  {can.healthLocks && (
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <Button
@@ -507,9 +515,11 @@ export function HealthMonitor({ tabId }: HealthMonitorProps) {
               </CardTitle>
             </CardHeader>
             <CardContent className="flex-1 overflow-auto p-0 px-3 pb-3">
-              {isEmbedded ? (
+              {!can.healthLocks ? (
                 <p className="py-4 text-center text-xs text-muted-foreground">
-                  SQLite has no server process, so there are no locks to show
+                  {isEmbedded
+                    ? 'SQLite has no server process, so there are no locks to show'
+                    : 'Lock monitoring is not available for this database'}
                 </p>
               ) : errors.locks ? (
                 <p className="text-xs text-destructive">{errors.locks}</p>
