@@ -1,0 +1,166 @@
+---
+title: Schema Intel
+description: Automated database schema diagnostics — missing primary keys, unindexed foreign keys, duplicate indexes, bloat, and suggested SQL fixes
+---
+
+# Schema Intel
+
+Schema Intel provides automated, one-click schema diagnostics to surface structural issues, performance bottlenecks, and accumulated schema debt without leaving data-peek.
+
+Over time, almost every database accumulates schema debt: a table created without a primary key during prototyping, a foreign key column that was never indexed, duplicate indexes left behind by past migrations, or dead tuples bloating table storage. Instead of remembering catalog incantations or maintaining one-off diagnostic scripts, Schema Intel runs safe, read-only checks across your tables and indexes, groups the findings by severity, and offers suggested SQL fixes you can review and apply.
+
+## Opening Schema Intel
+
+Click **Schema Intel** in the sidebar to open it as a dedicated tab for the active connection.
+
+Diagnostics run automatically when you open the tab for the first time. You can click **Run checks** (or **Re-run**) in the header toolbar to refresh findings at any time, or toggle individual checks in the left sidebar to focus on specific diagnostics.
+
+## Database Support Matrix
+
+Schema Intel tailors its diagnostic suite to the active database engine. Checks that rely on database-specific statistics (such as PostgreSQL's `pg_stat_user_tables` or `pg_stat_user_indexes`) are enabled only for compatible engines. ClickHouse connections skip every check.
+
+| Check | Severity | PostgreSQL | MySQL | SQL Server | SQLite | ClickHouse |
+| ----- | -------- | :--------: | :---: | :--------: | :----: | :--------: |
+| `tables_without_pk` | `warning` | Supported | Supported | Supported | Supported | Unsupported |
+| `missing_fk_indexes` | `warning` | Supported | Supported | Supported | Supported | Unsupported |
+| `duplicate_indexes` | `warning` | Supported | Supported | Unsupported | Supported | Unsupported |
+| `unused_indexes` | `info` | Supported | Supported | Unsupported | Unsupported | Unsupported |
+| `invalid_indexes` | `critical` | Supported | Unsupported | Unsupported | Unsupported | Unsupported |
+| `bloated_tables` | `info` | Supported | Unsupported | Unsupported | Unsupported | Unsupported |
+| `never_vacuumed` | `info` | Supported | Unsupported | Unsupported | Unsupported | Unsupported |
+| `nullable_fks` | `info` | Supported | Supported | Supported | Supported | Unsupported |
+
+## Diagnostic Checks
+
+### Tables without a Primary Key (`tables_without_pk`)
+
+- **Severity**: `warning`
+- **What it detects**: User tables that lack an explicit primary key constraint.
+- **What the issue means**: Tables without a primary key lack an immutable, unique identifier for each row. This makes row-level edits, de-duplication, logical replication, and tooling integration significantly harder. In MySQL (InnoDB), tables without a declared primary key fall back to a hidden 6-byte internal row ID, which can create write clustering bottlenecks.
+- **Database support**:
+  - **PostgreSQL**: Supported — inspects `pg_class` and `pg_constraint` for tables missing `contype = 'p'`.
+  - **MySQL**: Supported — queries `information_schema.TABLE_CONSTRAINTS` for tables lacking a `PRIMARY KEY`.
+  - **SQL Server**: Supported — checks `sys.tables` and `sys.indexes` for tables where no index has `is_primary_key = 1`.
+  - **SQLite**: Supported — inspects table column metadata via `PRAGMA table_xinfo` for tables without a `pk` column.
+
+### Foreign Keys Missing an Index (`missing_fk_indexes`)
+
+- **Severity**: `warning`
+- **What it detects**: Foreign key constraints whose referencing columns are not covered as the leading prefix of any index.
+- **What the issue means**: While relational databases enforce foreign key constraints, they do not automatically create supporting indexes on child tables. When rows in the parent table are updated or deleted, the database must verify that no referencing child rows exist. Without an index on the foreign key columns, this check forces a full table scan of the child table, resulting in severe lock contention, query timeouts, and sluggish `JOIN` queries.
+- **Database support**:
+  - **PostgreSQL**: Supported — evaluates foreign keys in `pg_constraint` against `pg_index` leading key columns.
+  - **MySQL**: Supported — verifies foreign key columns against existing index prefixes in `information_schema`.
+  - **SQL Server**: Supported — matches foreign key columns in `sys.foreign_key_columns` against index definitions in `sys.index_columns`.
+  - **SQLite**: Supported — compares foreign keys reported by `PRAGMA foreign_key_list` against indexes in `PRAGMA index_list`.
+
+### Duplicate or Redundant Indexes (`duplicate_indexes`)
+
+- **Severity**: `warning`
+- **What it detects**: Multiple indexes defined on the same table that cover identical columns with matching sort order and expressions.
+- **What the issue means**: Duplicate indexes offer zero additional read benefits, yet every `INSERT`, `UPDATE`, and `DELETE` must write to and maintain each duplicate index. This wastes disk storage, inflates memory usage in the buffer pool, and degrades write throughput.
+- **Database support**:
+  - **PostgreSQL**: Supported — compares normalized index definitions via `pg_get_indexdef`.
+  - **MySQL**: Supported — identifies indexes covering the identical ordered column list and collation.
+  - **SQL Server**: Unsupported — not currently evaluated for SQL Server connections.
+  - **SQLite**: Supported — compares index column lists, collation, and sort order signatures.
+
+### Unused Indexes (`unused_indexes`)
+
+- **Severity**: `info`
+- **What it detects**: Non-primary, non-unique indexes larger than 1 MB that have recorded zero scans since statistics were last reset.
+- **What the issue means**: Indexes consume disk space and add write overhead to every mutation. If an index has never served a read query over a representative period of production traffic, it is a prime candidate for removal. (Always ensure statistics have not been recently reset before dropping indexes).
+- **Database support**:
+  - **PostgreSQL**: Supported — queries `pg_stat_user_indexes` where `idx_scan = 0`.
+  - **MySQL**: Supported — reads `performance_schema.table_io_waits_summary_by_index_usage` for indexes with zero fetch operations (`COUNT_FETCH = 0`).
+  - **SQL Server**: Unsupported — not currently evaluated for SQL Server connections.
+  - **SQLite**: Unsupported — SQLite does not record index usage or scan frequency statistics.
+
+### Invalid Indexes (`invalid_indexes`)
+
+- **Severity**: `critical`
+- **What it detects**: Indexes marked invalid (`indisvalid = false`) in the database catalog.
+- **What the issue means**: When a concurrent index creation fails or is cancelled (for example, due to a timeout, deadlock, or unique constraint violation during `CREATE INDEX CONCURRENTLY`), PostgreSQL leaves the partial index marked as invalid. The query planner completely ignores invalid indexes for read queries, yet write operations must still update them, causing unnecessary write overhead and disk consumption until dropped or rebuilt.
+- **Database support**:
+  - **PostgreSQL**: Supported — queries `pg_catalog.pg_index` where `indisvalid` is false.
+  - **MySQL**: Unsupported — MySQL does not produce persistent invalid index states.
+  - **SQL Server**: Unsupported — not applicable to SQL Server index mechanics.
+  - **SQLite**: Unsupported — SQLite indexes are either built completely or absent.
+
+### Bloated Tables (`bloated_tables`)
+
+- **Severity**: `info`
+- **What it detects**: Tables with more than 1,000 dead rows where dead rows make up over 20% of the table's rows.
+- **What the issue means**: Under PostgreSQL's multi-version concurrency control (MVCC), updated and deleted rows remain on disk as dead tuples until autovacuum reclaims them. When autovacuum cannot keep pace with high write workloads, tables accumulate dead-tuple bloat. This forces sequential scans to read unnecessary disk pages, wastes memory in shared buffers, and degrades query throughput.
+- **Database support**:
+  - **PostgreSQL**: Supported — evaluates live versus dead tuple counts from `pg_stat_user_tables`.
+  - **MySQL**: Unsupported — MySQL InnoDB table fragmentation is not tracked via dead-tuple counters.
+  - **SQL Server**: Unsupported — SQL Server does not track dead tuples using PostgreSQL's MVCC metrics.
+  - **SQLite**: Unsupported — SQLite does not record per-table dead row statistics.
+
+### Never Vacuumed or Analyzed (`never_vacuumed`)
+
+- **Severity**: `info`
+- **What it detects**: Tables with more than 1,000 rows that have no record of ever being vacuumed or analyzed.
+- **What the issue means**: The cost-based query planner relies on table and column statistics to make intelligent decisions about index usage and join algorithms. Tables that autovacuum has never touched typically have stale or missing statistics, causing the query planner to make poor execution choices such as full table scans instead of index lookups.
+- **Database support**:
+  - **PostgreSQL**: Supported — inspects `pg_stat_user_tables` for tables where `last_vacuum`, `last_autovacuum`, `last_analyze`, and `last_autoanalyze` are all `NULL`.
+  - **MySQL**: Unsupported — MySQL table statistics collection operates under different mechanisms.
+  - **SQL Server**: Unsupported — SQL Server automatically maintains column statistics using distinct metadata catalogs.
+  - **SQLite**: Unsupported — SQLite keeps no per-table vacuum history.
+
+### Nullable Foreign Keys (`nullable_fks`)
+
+- **Severity**: `info`
+- **What it detects**: Foreign key constraints where one or more referencing columns allow `NULL` values.
+- **What the issue means**: Foreign key constraints only validate referential integrity when column values are non-null. While nullable foreign keys are valid when representing optional relationships (such as an optional `parent_id` or `invited_by`), they are often created unintentionally when a column definition omits a `NOT NULL` constraint. Rows with `NULL` in foreign key columns can silently bypass referential checks and result in orphaned data.
+- **Database support**:
+  - **PostgreSQL**: Supported — inspects attribute nullability in `pg_attribute` for foreign key columns.
+  - **MySQL**: Supported — checks `IS_NULLABLE` in `information_schema.COLUMNS` for foreign key columns.
+  - **SQL Server**: Supported — inspects `is_nullable` in `sys.columns` for foreign key columns.
+  - **SQLite**: Supported — checks `notnull = 0` in `PRAGMA table_xinfo` for foreign key columns.
+
+## The Run Fix Workflow
+
+When Schema Intel surfaces an actionable finding, it provides contextual guidance and suggested SQL:
+
+1. **Inspect findings**: Findings are grouped by diagnostic check in the results panel. Expand any check to view individual issues, affected entity names (schema, table, column, or index), and impacted row or size estimates.
+2. **Review suggested SQL**: For findings with actionable remediation scripts, click **Show fix** to view the SQL directly inside the finding card, or click **Copy** to copy the SQL statement to your clipboard.
+3. **Open in a query tab**: Click **Open in new tab** to load the suggested SQL directly into an active query editor tab.
+
+<Callout type="warning">
+  **Suggested SQL is a starting point, not an automated migration.**
+
+  Never apply suggested SQL blindly without reviewing it against your schema and production operational requirements:
+
+  - **Column defaults and identities**: Adding a primary key to an existing table may require selecting an appropriate sequence or identity strategy (`BIGSERIAL`, `BIGINT IDENTITY`, `AUTO_INCREMENT`) and verifying existing data uniqueness.
+  - **Locking and concurrency**: Creating or dropping indexes and altering tables can take table locks that block concurrent reads or writes. On PostgreSQL production databases, consider adding `CONCURRENTLY` to index creation and drop statements where applicable.
+  - **Domain requirements**: Nullable foreign keys or unindexed columns may be intentional by design. Evaluate whether a foreign key is meant to be optional before altering columns to `NOT NULL`.
+
+  You remain responsible for reviewing the suggested SQL and determining whether and how to execute it on your database.
+</Callout>
+
+## CLI: data-peek doctor
+
+You can run the same Schema Intel diagnostics directly from your terminal or integrate them into continuous integration (CI) pipelines using the data-peek CLI:
+
+```bash
+DATABASE_URL=postgres://user:pass@localhost:5432/app npx @data-peek/cli doctor
+```
+
+Or pass the connection string as an argument:
+
+```bash
+npx @data-peek/cli doctor postgres://user:pass@localhost:5432/app
+```
+
+The CLI runs the exact same checks against PostgreSQL from the shared package, outputs findings with severity ratings and suggested SQL fixes, and can fail CI builds when issues are detected (for example, `--fail-on warning`).
+
+For options, exit codes, and CI pipeline setup, see the [CLI reference](/docs/reference/cli).
+
+## Related
+
+- [Health Monitor](/docs/features/health-monitor) — live view of active queries, table sizes, cache hit ratios, and locks
+- [CLI Reference](/docs/reference/cli) — run schema checks from your terminal with `npx @data-peek/cli doctor`
+- [Query Plans](/docs/features/query-plans) — analyze execution plans with `EXPLAIN ANALYZE`
+- [Table Designer](/docs/features/table-designer) — visual editor for altering columns, indexes, and constraints

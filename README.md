@@ -137,6 +137,7 @@ More clips (command palette, ER diagrams, the AI assistant, inline editing) are 
 - Table designer for creating and altering tables: columns, indexes, constraints, and partitions
 - Interactive ER diagrams
 - Health monitor with active queries, table sizes, cache hit ratios, and lock detection
+- [Schema Intel](https://docs.datapeek.dev/docs/features/schema-intel) diagnostics for unindexed foreign keys, duplicate or unused indexes, missing primary keys, and table bloat, with suggested SQL fixes
 
 ### AI and agents
 

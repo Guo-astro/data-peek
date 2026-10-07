@@ -35,6 +35,7 @@
     "query-benchmarking",
     "performance-analysis",
     "health-monitor",
+    "schema-intel",
     "pg-notifications",
     "data-masking",
     "audit-log",
