@@ -56,10 +56,6 @@ export default function RootLayout({
           <StructuredData type="organization" />
           <StructuredData type="software" />
           {children}
-          <Script
-            src="https://giveme.gilla.fun/script.js"
-            strategy="afterInteractive"
-          />
           <Script id="microsoft-clarity" strategy="afterInteractive">
             {`
               (function(c,l,a,r,i,t,y){
@@ -69,10 +65,6 @@ export default function RootLayout({
               })(window, document, "clarity", "script", "ukb66wt82h");
             `}
           </Script>
-          <Script
-            src="https://cdn.littlestats.click/embed/ooehabrtts8lb37"
-            strategy="afterInteractive"
-          />
           <Script
             src="https://scripts.simpleanalyticscdn.com/latest.js"
             strategy="afterInteractive"
