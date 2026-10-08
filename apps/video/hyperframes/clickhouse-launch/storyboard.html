@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ClickHouse launch storyboard v1</title>
+<style>
+@font-face { font-family: 'Geist Variable'; src: url('fonts/geist.woff2') format('woff2'); font-weight: 100 900; }
+@font-face { font-family: 'Geist Mono Variable'; src: url('fonts/geist-mono.woff2') format('woff2'); font-weight: 100 900; }
+:root {
+  --bg: #101216; --raised: #171a20; --fg: #ebecee; --muted: #9aa0ad;
+  --accent: #6b8cf5; --deep: #3b52c4; --success: #4ade80; --hair: #2a2f3a;
+  --sans: 'Geist Variable', system-ui, sans-serif; --mono: 'Geist Mono Variable', ui-monospace, monospace;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #0b0c0f; color: var(--fg); font-family: var(--sans); padding: 48px 40px 80px; }
+header { max-width: 1500px; margin: 0 auto 32px; display: flex; align-items: end; justify-content: space-between; gap: 24px; }
+h1 { font-size: 34px; font-weight: 800; letter-spacing: -0.03em; }
+h1 small { font-family: var(--mono); font-size: 14px; color: var(--accent); font-weight: 500; margin-left: 10px; vertical-align: middle; }
+.dek { color: var(--muted); margin-top: 6px; font-size: 16px; }
+.tag { font-family: var(--mono); font-size: 13px; color: var(--muted); border: 1px solid var(--hair); padding: 6px 10px; border-radius: 6px; white-space: nowrap; }
+.grid { max-width: 1500px; margin: 0 auto; display: grid; grid-template-columns: repeat(3, 1fr); gap: 28px 22px; }
+.act { grid-column: 1 / -1; font-family: var(--mono); font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--hair); padding-bottom: 6px; margin-top: 8px; }
+.cell { aspect-ratio: 16 / 9; container-type: inline-size; position: relative; overflow: hidden; background: var(--bg); border: 1px solid var(--hair); border-radius: 6px; }
+.meta { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 12px; color: var(--muted); margin-top: 10px; }
+.meta b { color: var(--fg); font-weight: 600; }
+.note { font-size: 13.5px; line-height: 1.45; color: #c4c8d0; margin-top: 6px; }
+.note strong { color: var(--fg); }
+.seam { display: inline-block; font-family: var(--mono); font-size: 11px; color: var(--accent); border: 1px solid #2c3a6e; border-radius: 999px; padding: 2px 8px; margin-top: 8px; }
+
+/* canvas-scaled pieces (1cqw = 19.2px at 1920 wide) */
+.glow { position: absolute; inset: 0; background: radial-gradient(55cqw 40cqw at 50% 48%, rgba(59,82,196,0.22), transparent 70%); }
+.footage { position: absolute; left: 6.25cqw; top: 0; width: 87.5cqw; height: 100%; object-fit: cover; }
+.cap { position: absolute; left: 8.33cqw; bottom: 3.4cqw; max-width: 60cqw; background: rgba(16,18,22,0.88); border: 0.1cqw solid var(--hair); border-radius: 0.7cqw; padding: 0.8cqw 1.25cqw; font-size: 2.3cqw; font-weight: 600; line-height: 1.25; letter-spacing: -0.01em; }
+.cap .kw { color: var(--accent); }
+.chip { position: absolute; font-family: var(--mono); font-size: 1.6cqw; font-weight: 500; background: var(--raised); border: 0.16cqw solid var(--hair); border-radius: 0.6cqw; padding: 0.5cqw 0.9cqw; color: var(--fg); white-space: nowrap; }
+.chip.accent { border-color: var(--accent); color: var(--accent); }
+.card { position: absolute; background: rgba(23,26,32,0.94); border: 0.16cqw solid var(--hair); border-radius: 1cqw; padding: 1.4cqw 1.8cqw; }
+.card .big { font-family: var(--mono); font-weight: 800; font-size: 5.2cqw; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; line-height: 1; }
+.card .lbl { font-family: var(--mono); font-size: 1.45cqw; color: var(--muted); margin-top: 0.6cqw; }
+.zoom { position: absolute; border: 0.2cqw dashed var(--accent); border-radius: 0.6cqw; }
+.zoom::after { content: 'punch-in'; position: absolute; top: -1.9cqw; left: 0; font-family: var(--mono); font-size: 1.1cqw; color: var(--accent); }
+.bar { height: 0.7cqw; background: var(--hair); border-radius: 1cqw; margin-top: 1cqw; overflow: hidden; }
+.bar i { display: block; height: 100%; width: 1.5%; min-width: 0.5cqw; background: var(--accent); }
+.logo { width: 7cqw; height: 7cqw; }
+.ct { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1.6cqw; }
+.lockup { display: flex; align-items: center; gap: 1.6cqw; }
+.word { font-size: 6.4cqw; font-weight: 800; letter-spacing: -0.03em; }
+.plus { font-family: var(--mono); font-size: 4.4cqw; color: var(--muted); font-weight: 300; }
+.beta { font-family: var(--mono); font-size: 1.5cqw; letter-spacing: 0.14em; color: var(--accent); border: 0.16cqw solid var(--accent); border-radius: 0.5cqw; padding: 0.35cqw 0.8cqw; }
+.end1 { font-size: 4.6cqw; font-weight: 800; letter-spacing: -0.03em; }
+.end2 { font-size: 2.6cqw; font-weight: 300; color: #c4c8d0; }
+.url { font-family: var(--mono); font-size: 2.2cqw; color: var(--accent); }
+.tokens { padding: 2.4cqw; display: flex; flex-direction: column; gap: 1.6cqw; font-size: 1.7cqw; }
+.sw { display: flex; gap: 1cqw; }
+.sw span { width: 5cqw; height: 5cqw; border-radius: 0.6cqw; border: 0.12cqw solid var(--hair); }
+.seams { position: absolute; inset: 0; padding: 2.4cqw; display: flex; flex-wrap: wrap; align-content: center; gap: 1cqw; font-family: var(--mono); font-size: 1.6cqw; }
+.seams span { border: 0.12cqw solid var(--hair); border-radius: 0.5cqw; padding: 0.4cqw 0.8cqw; }
+.seams em { color: var(--accent); font-style: normal; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>data-peek speaks ClickHouse <small>storyboard v1</small></h1>
+    <p class="dek">A 60 s launch cut of Rohith's own narrated recording. His voice, his face cam, real UI. Motion only frames it.</p>
+  </div>
+  <span class="tag">1920×1080 · ~62 s · 10 beats · captions on · music bed</span>
+</header>
+
+<main class="grid">
+  <div class="act">Hook</div>
+
+  <section>
+    <div class="cell" id="frame-01">
+      <div class="glow"></div>
+      <div class="ct">
+        <div class="lockup">
+          <svg class="logo" viewBox="0 0 32 32"><rect width="32" height="32" rx="7" fill="#6b8cf5"/><ellipse cx="16" cy="10" rx="8" ry="3" fill="none" stroke="#0a0a0b" stroke-width="2"/><path d="M8 10v12c0 1.7 3.6 3 8 3s8-1.3 8-3V10M8 16c0 1.7 3.6 3 8 3s8-1.3 8-3" fill="none" stroke="#0a0a0b" stroke-width="2"/></svg>
+          <span class="word">data-peek</span>
+          <span class="plus">+</span>
+          <span class="word">ClickHouse</span>
+        </div>
+        <span class="beta">BETA</span>
+      </div>
+    </div>
+    <div class="meta"><b>01 · OPEN</b><span>open · 0.0–3.0</span></div>
+    <p class="note"><strong>Logo springs in first</strong>, then "ClickHouse" types after the mono "+", then the BETA chip pops. One radial glow, no grid. Music starts.</p>
+    <span class="seam">hard cut → footage</span>
+  </section>
+
+  <section>
+    <div class="cell" id="frame-02">
+      <img class="footage" src="storyboard-frames/f02.jpg" alt="">
+      <div class="cap">data-peek finally now speaks <span class="kw">ClickHouse.</span></div>
+    </div>
+    <div class="meta"><b>02 · SPEAKS CLICKHOUSE</b><span>src 11.80–15.10 · 3.0–6.3</span></div>
+    <p class="note"><strong>Cut straight to Rohith.</strong> Caption words reveal with his voice; "ClickHouse" lights blue as he says it.</p>
+    <span class="seam">hard cut</span>
+  </section>
+
+  <div class="act">Connect and scale</div>
+
+  <section>
+    <div class="cell" id="frame-03">
+      <img class="footage" src="storyboard-frames/f03.jpg" alt="">
+      <div class="zoom" style="left:19.4cqw; top:40.6cqw; width:57cqw; height:4.4cqw"></div>
+      <div class="cap">I can just paste my string and save connection and boom, I'm just connected to <span class="kw">ClickHouse</span> now.</div>
+    </div>
+    <div class="meta"><b>03 · CONNECT</b><span>src 23.30–29.85 · 6.3–12.85</span></div>
+    <p class="note"><strong>Slow push toward the pasted URL</strong> while he talks; the push releases on "boom" as the app connects. No chip: the UI already labels it.</p>
+    <span class="seam">hard cut</span>
+  </section>
+
+  <section>
+    <div class="cell" id="frame-04">
+      <img class="footage" src="storyboard-frames/f04.jpg" alt="">
+      <div class="card" style="left:30cqw; top:15cqw">
+        <div class="big">20,000,000</div>
+        <div class="lbl">events · shopstream</div>
+      </div>
+      <div class="cap">So 20 million events … the events table, the products table, the top products, revenue</div>
+    </div>
+    <div class="meta"><b>04 · TWENTY MILLION</b><span>src 37.68–38.95 + 41.92–48.50 · 12.85–20.7</span></div>
+    <p class="note"><strong>The number counts up on "20 million"</strong>, holds ~3 s over the ERD's empty canvas, then slides out left.</p>
+    <span class="seam">hard cut (jump cut inside)</span>
+  </section>
+
+  <section>
+    <div class="cell" id="frame-05">
+      <img class="footage" src="storyboard-frames/f05.jpg" alt="">
+      <div class="zoom" style="left:6.5cqw; top:52cqw; width:22cqw; height:3.4cqw"></div>
+      <div class="card" style="left:62cqw; top:14cqw">
+        <div class="big" style="color:var(--accent)">301 ms</div>
+        <div class="lbl">GROUP BY over 20M rows</div>
+      </div>
+      <div class="cap">It just returns in like 300 milliseconds.</div>
+    </div>
+    <div class="meta"><b>05 · SAME APP</b><span>src 52.92–66.70 · 20.7–34.5</span></div>
+    <p class="note"><strong>Runs untouched for the query</strong>; on "300 milliseconds" a punch-in lands on the footer's "11 rows returned 301ms" and the stat card pops top-right.</p>
+    <span class="seam">hard cut</span>
+  </section>
+
+  <div class="act">Proof</div>
+
+  <section>
+    <div class="cell" id="frame-06">
+      <img class="footage" src="storyboard-frames/f06.jpg" alt="">
+      <div class="zoom" style="left:9.75cqw; top:25.2cqw; width:80.5cqw; height:2.6cqw"></div>
+      <div class="chip" style="left:10cqw; top:30.5cqw">LowCardinality(String)</div>
+      <div class="chip" style="left:10cqw; top:35.5cqw">UInt64</div>
+      <div class="chip accent" style="left:10cqw; top:40.5cqw">Nullable(Decimal(38, 2))</div>
+      <div class="cap">We respect the <span class="kw">ClickHouse</span> types, and we just display them here as it comes.</div>
+    </div>
+    <div class="meta"><b>06 · TYPES</b><span>src 83.30–91.70 · 34.5–42.9</span></div>
+    <p class="note"><strong>Punch-in on the header row</strong>, then three type chips cascade down the left; the Nullable(Decimal) chip lands last in blue.</p>
+    <span class="seam">hard cut</span>
+  </section>
+
+  <section>
+    <div class="cell" id="frame-07">
+      <img class="footage" src="storyboard-frames/f07.jpg" alt="">
+      <div class="zoom" style="left:65.75cqw; top:27cqw; width:26.5cqw; height:8.4cqw"></div>
+      <div class="card" style="left:9cqw; top:17cqw; width:36cqw">
+        <div class="lbl" style="margin:0 0 0.6cqw">Granules read</div>
+        <div class="big">17 <span style="color:var(--muted); font-weight:300">/ 1,583</span></div>
+        <div class="bar"><i></i></div>
+      </div>
+      <div class="cap">If I click on Explain, it just shows the query execution plan, the granules and all those things.</div>
+    </div>
+    <div class="meta"><b>07 · EXPLAIN</b><span>src 98.64–106.00 · 42.9–50.3</span></div>
+    <p class="note"><strong>Push into the PrimaryKey block</strong> as the plan opens; the card's 17 counts up and the bar barely fills. Numbers are the ones on screen.</p>
+    <span class="seam">hard cut</span>
+  </section>
+
+  <section>
+    <div class="cell" id="frame-08">
+      <img class="footage" src="storyboard-frames/f08.jpg" alt="">
+      <div class="chip accent" style="left:66cqw; top:18cqw">Copy as Markdown</div>
+      <div class="cap">You can just copy to clipboard as markdown.</div>
+    </div>
+    <div class="meta"><b>08 · MARKDOWN</b><span>src 135.67–139.00 · 50.3–53.6</span></div>
+    <p class="note"><strong>Chip pops beside the context menu</strong> as he hovers Copy to clipboard. No zoom; the menu is already big.</p>
+    <span class="seam">hard cut</span>
+  </section>
+
+  <div class="act">Close</div>
+
+  <section>
+    <div class="cell" id="frame-09">
+      <img class="footage" src="storyboard-frames/f09.jpg" alt="">
+      <div class="cap">You can play around with it, let us know.</div>
+    </div>
+    <div class="meta"><b>09 · SIGN-OFF</b><span>src 149.60–153.05 · 53.6–57.1</span></div>
+    <p class="note"><strong>The held beat.</strong> Nothing added; his line lands on its own.</p>
+    <span class="seam">crossfade 0.4 s →</span>
+  </section>
+
+  <section>
+    <div class="cell" id="frame-10">
+      <div class="glow"></div>
+      <div class="ct">
+        <div class="end1">ClickHouse support is in beta.</div>
+        <div class="end2">Query and browse it in data-peek, free for personal use.</div>
+        <div class="lockup" style="margin-top:1.6cqw; gap:1.2cqw">
+          <svg style="width:3.6cqw;height:3.6cqw" viewBox="0 0 32 32"><rect width="32" height="32" rx="7" fill="#6b8cf5"/><ellipse cx="16" cy="10" rx="8" ry="3" fill="none" stroke="#0a0a0b" stroke-width="2"/><path d="M8 10v12c0 1.7 3.6 3 8 3s8-1.3 8-3V10M8 16c0 1.7 3.6 3 8 3s8-1.3 8-3" fill="none" stroke="#0a0a0b" stroke-width="2"/></svg>
+          <span class="url">datapeek.dev</span>
+        </div>
+      </div>
+    </div>
+    <div class="meta"><b>10 · END CARD</b><span>end · 57.1–62.6</span></div>
+    <p class="note"><strong>Headline slides up first</strong>, the sub-line follows 0.4 s later, then logo + URL. Holds still to the last frame; music fades over the final 1.2 s.</p>
+    <span class="seam">end</span>
+  </section>
+
+  <section>
+    <div class="cell">
+      <div class="seams">
+        <span>01 open</span><em>cut</em><span>02</span><em>cut</em><span>03</span><em>cut</em><span>04</span><em>cut</em><span>05</span><em>cut</em><span>06</span><em>cut</em><span>07</span><em>cut</em><span>08</span><em>cut</em><span>09</span><em>xfade</em><span>10 end</span>
+      </div>
+    </div>
+    <div class="meta"><b>SEAM MAP</b><span>hard cuts carry his rhythm</span></div>
+    <p class="note"><strong>Cuts sit on his natural pauses</strong>, 80 ms audio fades on every seam so nothing clicks. One crossfade, into the end card.</p>
+  </section>
+
+  <section>
+    <div class="cell">
+      <div class="tokens">
+        <div class="sw"><span style="background:#101216"></span><span style="background:#171a20"></span><span style="background:#ebecee"></span><span style="background:#6b8cf5"></span><span style="background:#3b52c4"></span></div>
+        <div>Geist 800 / 300 · statements</div>
+        <div style="font-family:var(--mono)">Geist Mono · numbers, types, SQL</div>
+        <div style="color:var(--muted); font-size:1.4cqw">Bans: no AI voice or avatar · no competitor framing · no invented numbers · no bounce · no light theme</div>
+      </div>
+    </div>
+    <div class="meta"><b>TOKENS</b><span>from motion-kit/design.md</span></div>
+    <p class="note"><strong>Truthfulness:</strong> every frame is his recording; every number and type name in a callout is read off that recording.</p>
+  </section>
+</main>
+</body>
+</html>

@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=1920, height=1080">
+    <title>data-peek speaks ClickHouse</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      @font-face {
+        font-family: "Geist Variable";
+        src: url("fonts/geist.woff2") format("woff2");
+        font-weight: 100 900;
+      }
+      @font-face {
+        font-family: "Geist Mono Variable";
+        src: url("fonts/geist-mono.woff2") format("woff2");
+        font-weight: 100 900;
+      }
+      :root {
+        --bg: #101216;
+        --raised: #171a20;
+        --fg: #ebecee;
+        --muted: #9aa0ad;
+        --dim: #8a909c;
+        --accent: #6b8cf5;
+        --deep: #3b52c4;
+        --hair: #2a2f3a;
+        --sans: "Geist Variable", system-ui, sans-serif;
+        --mono: "Geist Mono Variable", ui-monospace, monospace;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--fg);
+        font-family: var(--sans);
+      }
+      #root {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: var(--bg);
+      }
+      .layer {
+        position: absolute;
+        inset: 0;
+      }
+      .glow {
+        position: absolute;
+        left: 360px;
+        top: 140px;
+        width: 1200px;
+        height: 800px;
+        border-radius: 50%;
+        background: radial-gradient(closest-side, rgba(59, 82, 196, 0.32), rgba(59, 82, 196, 0));
+      }
+
+      #open .lockup {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 36px;
+      }
+      #open .logo {
+        width: 132px;
+        height: 132px;
+        display: block;
+      }
+      .word {
+        font-size: 122px;
+        font-weight: 800;
+        letter-spacing: -0.03em;
+        line-height: 1;
+        display: block;
+      }
+      .plus {
+        font-family: var(--mono);
+        font-size: 84px;
+        font-weight: 300;
+        color: var(--muted);
+        display: block;
+      }
+      #ch-word .ch {
+        display: inline-block;
+      }
+      .beta {
+        position: absolute;
+        left: 50%;
+        top: 640px;
+        width: 160px;
+        margin-left: -80px;
+        text-align: center;
+        font-family: var(--mono);
+        font-size: 30px;
+        font-weight: 600;
+        letter-spacing: 0.16em;
+        color: var(--accent);
+        border: 3px solid var(--accent);
+        border-radius: 10px;
+        padding: 8px 0;
+      }
+
+      #cam {
+        position: absolute;
+        inset: 0;
+        transform-origin: 50% 50%;
+      }
+      #cam-inner {
+        position: absolute;
+        inset: 0;
+      }
+      .footage {
+        position: absolute;
+        left: 120px;
+        top: 0;
+        width: 1680px;
+        height: 1080px;
+        object-fit: cover;
+      }
+
+      .cap {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+      }
+      .cap-box {
+        position: absolute;
+        left: 160px;
+        bottom: 60px;
+        max-width: 1120px;
+        background: rgba(16, 18, 22, 0.92);
+        border: 2px solid var(--hair);
+        border-radius: 16px;
+        padding: 16px 28px 18px;
+        font-size: 46px;
+        font-weight: 600;
+        line-height: 1.22;
+        letter-spacing: -0.01em;
+        color: var(--dim);
+      }
+      .cap.top .cap-box {
+        bottom: auto;
+        top: 60px;
+      }
+      .cap .w.on {
+        color: var(--fg);
+      }
+      .cap .w.kw.on {
+        color: var(--accent);
+      }
+
+      .callout {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+      }
+      .card {
+        position: absolute;
+        background: rgba(23, 26, 32, 0.96);
+        border: 3px solid var(--hair);
+        border-radius: 22px;
+        padding: 30px 40px 32px;
+        box-shadow: 0 30px 80px rgba(0, 0, 0, 0.45);
+      }
+      .big {
+        font-family: var(--mono);
+        font-weight: 800;
+        font-size: 104px;
+        letter-spacing: -0.03em;
+        line-height: 1;
+        font-variant-numeric: tabular-nums;
+        display: block;
+      }
+      .lbl {
+        font-family: var(--mono);
+        font-size: 30px;
+        color: var(--muted);
+        margin-top: 14px;
+        display: block;
+      }
+      .chip {
+        position: absolute;
+        font-family: var(--mono);
+        font-size: 36px;
+        font-weight: 500;
+        background: var(--raised);
+        border: 3px solid var(--hair);
+        border-radius: 12px;
+        padding: 12px 22px;
+        white-space: nowrap;
+        box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
+      }
+      .chip.accent {
+        border-color: var(--accent);
+        color: var(--accent);
+      }
+      .bar {
+        width: 100%;
+        height: 14px;
+        background: var(--hair);
+        border-radius: 8px;
+        margin-top: 22px;
+        overflow: hidden;
+      }
+      .bar-fill {
+        width: 100%;
+        height: 100%;
+        background: var(--accent);
+        transform-origin: 0 50%;
+        display: block;
+      }
+
+      #end .end-bg {
+        position: absolute;
+        inset: 0;
+        background: var(--bg);
+      }
+      #end .stack {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+      }
+      .end1 {
+        font-size: 104px;
+        font-weight: 800;
+        letter-spacing: -0.03em;
+        display: block;
+      }
+      .end2 {
+        font-size: 50px;
+        font-weight: 300;
+        color: #c4c8d0;
+        margin-top: 28px;
+        display: block;
+      }
+      .url-row {
+        display: flex;
+        align-items: center;
+        gap: 22px;
+        margin-top: 72px;
+      }
+      .url-row img {
+        width: 72px;
+        height: 72px;
+        display: block;
+      }
+      .url {
+        font-family: var(--mono);
+        font-size: 46px;
+        color: var(--accent);
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <div data-hf-id="hf-cv3u" id="root" data-composition-id="main" data-start="0" data-width="1920" data-height="1080" data-duration="63.09">
+      <div data-hf-id="hf-yw9e" id="bg" class="clip layer" data-start="0" data-duration="63.09" data-track-index="0">
+        <div data-hf-id="hf-35j2" class="glow" id="glow"></div>
+      </div>
+
+      <section data-hf-id="hf-hynt" id="open" class="clip layer" data-start="0" data-duration="3" data-track-index="1">
+        <div data-hf-id="hf-b4wb" class="lockup" id="open-lockup">
+          <img data-hf-id="hf-vu3i" class="logo" id="open-logo" src="logo.svg" alt="data-peek logo">
+          <span data-hf-id="hf-guac" class="word" id="dp-word">data-peek</span>
+          <span data-hf-id="hf-69e9" class="plus" id="open-plus">+</span>
+          <span data-hf-id="hf-ac1z" class="word" id="ch-word"><span data-hf-id="hf-yx6t" class="ch">C</span><span data-hf-id="hf-hr3s" class="ch">l</span><span data-hf-id="hf-frkn" class="ch">i</span><span data-hf-id="hf-i5et" class="ch">c</span><span data-hf-id="hf-eyyl" class="ch">k</span><span data-hf-id="hf-wxno" class="ch">H</span><span data-hf-id="hf-gk6p" class="ch">o</span><span data-hf-id="hf-e6cj" class="ch">u</span><span data-hf-id="hf-bsid" class="ch">s</span><span data-hf-id="hf-ol83" class="ch">e</span></span>
+        </div>
+        <div data-hf-id="hf-7i4p" class="beta" id="open-beta">BETA</div>
+      </section>
+
+      <div data-hf-id="hf-ftaq" id="cam">
+        <div data-hf-id="hf-vqj5" id="cam-inner">
+      <video data-hf-id="hf-puqv" id="v-s1" class="clip footage" src="assets/click-house-demo.mp4" playsinline data-has-audio="true" data-audio-group="voice" data-start="3.0" data-duration="3.43" data-media-start="11.82" data-track-index="2" data-automation="{&quot;version&quot;: 1, &quot;lanes&quot;: [{&quot;target&quot;: &quot;volume&quot;, &quot;points&quot;: [{&quot;t&quot;: 0, &quot;v&quot;: 0}, {&quot;t&quot;: 0.04, &quot;v&quot;: 1}, {&quot;t&quot;: 3.37, &quot;v&quot;: 1}, {&quot;t&quot;: 3.43, &quot;v&quot;: 0}]}]}"></video>
+      <video data-hf-id="hf-fjiw" id="v-s2" class="clip footage" src="assets/click-house-demo.mp4" playsinline data-has-audio="true" data-audio-group="voice" data-start="6.43" data-duration="6.43" data-media-start="23.42" data-track-index="2" data-automation="{&quot;version&quot;: 1, &quot;lanes&quot;: [{&quot;target&quot;: &quot;volume&quot;, &quot;points&quot;: [{&quot;t&quot;: 0, &quot;v&quot;: 0}, {&quot;t&quot;: 0.04, &quot;v&quot;: 1}, {&quot;t&quot;: 6.37, &quot;v&quot;: 1}, {&quot;t&quot;: 6.43, &quot;v&quot;: 0}]}]}"></video>
+      <video data-hf-id="hf-3rzs" id="v-s3a" class="clip footage" src="assets/click-house-demo.mp4" playsinline data-has-audio="true" data-audio-group="voice" data-start="12.86" data-duration="1.24" data-media-start="37.69" data-track-index="2" data-automation="{&quot;version&quot;: 1, &quot;lanes&quot;: [{&quot;target&quot;: &quot;volume&quot;, &quot;points&quot;: [{&quot;t&quot;: 0, &quot;v&quot;: 0}, {&quot;t&quot;: 0.04, &quot;v&quot;: 1}, {&quot;t&quot;: 1.18, &quot;v&quot;: 1}, {&quot;t&quot;: 1.24, &quot;v&quot;: 0}]}]}"></video>
+      <video data-hf-id="hf-sbd3" id="v-s3b" class="clip footage" src="assets/click-house-demo.mp4" playsinline data-has-audio="true" data-audio-group="voice" data-start="14.1" data-duration="6.59" data-media-start="41.94" data-track-index="2" data-automation="{&quot;version&quot;: 1, &quot;lanes&quot;: [{&quot;target&quot;: &quot;volume&quot;, &quot;points&quot;: [{&quot;t&quot;: 0, &quot;v&quot;: 0}, {&quot;t&quot;: 0.04, &quot;v&quot;: 1}, {&quot;t&quot;: 6.53, &quot;v&quot;: 1}, {&quot;t&quot;: 6.59, &quot;v&quot;: 0}]}]}"></video>
+      <video data-hf-id="hf-qzp6" id="v-s4" class="clip footage" src="assets/click-house-demo.mp4" playsinline data-has-audio="true" data-audio-group="voice" data-start="20.69" data-duration="13.85" data-media-start="52.93" data-track-index="2" data-automation="{&quot;version&quot;: 1, &quot;lanes&quot;: [{&quot;target&quot;: &quot;volume&quot;, &quot;points&quot;: [{&quot;t&quot;: 0, &quot;v&quot;: 0}, {&quot;t&quot;: 0.04, &quot;v&quot;: 1}, {&quot;t&quot;: 13.79, &quot;v&quot;: 1}, {&quot;t&quot;: 13.85, &quot;v&quot;: 0}]}]}"></video>
+      <video data-hf-id="hf-tjcl" id="v-s6" class="clip footage" src="assets/click-house-demo.mp4" playsinline data-has-audio="true" data-audio-group="voice" data-start="34.54" data-duration="8.76" data-media-start="83.27" data-track-index="2" data-automation="{&quot;version&quot;: 1, &quot;lanes&quot;: [{&quot;target&quot;: &quot;volume&quot;, &quot;points&quot;: [{&quot;t&quot;: 0, &quot;v&quot;: 0}, {&quot;t&quot;: 0.04, &quot;v&quot;: 1}, {&quot;t&quot;: 8.7, &quot;v&quot;: 1}, {&quot;t&quot;: 8.76, &quot;v&quot;: 0}]}]}"></video>
+      <video data-hf-id="hf-x61v" id="v-s7" class="clip footage" src="assets/click-house-demo.mp4" playsinline data-has-audio="true" data-audio-group="voice" data-start="43.3" data-duration="7.41" data-media-start="98.66" data-track-index="2" data-automation="{&quot;version&quot;: 1, &quot;lanes&quot;: [{&quot;target&quot;: &quot;volume&quot;, &quot;points&quot;: [{&quot;t&quot;: 0, &quot;v&quot;: 0}, {&quot;t&quot;: 0.04, &quot;v&quot;: 1}, {&quot;t&quot;: 7.35, &quot;v&quot;: 1}, {&quot;t&quot;: 7.41, &quot;v&quot;: 0}]}]}"></video>
+      <video data-hf-id="hf-20xg" id="v-s8" class="clip footage" src="assets/click-house-demo.mp4" playsinline data-has-audio="true" data-audio-group="voice" data-start="50.71" data-duration="3.68" data-media-start="135.67" data-track-index="2" data-automation="{&quot;version&quot;: 1, &quot;lanes&quot;: [{&quot;target&quot;: &quot;volume&quot;, &quot;points&quot;: [{&quot;t&quot;: 0, &quot;v&quot;: 0}, {&quot;t&quot;: 0.04, &quot;v&quot;: 1}, {&quot;t&quot;: 3.62, &quot;v&quot;: 1}, {&quot;t&quot;: 3.68, &quot;v&quot;: 0}]}]}"></video>
+      <video data-hf-id="hf-ios9" id="v-s9" class="clip footage" src="assets/click-house-demo.mp4" playsinline data-has-audio="true" data-audio-group="voice" data-start="54.39" data-duration="3.6" data-media-start="149.48" data-track-index="2" data-automation="{&quot;version&quot;: 1, &quot;lanes&quot;: [{&quot;target&quot;: &quot;volume&quot;, &quot;points&quot;: [{&quot;t&quot;: 0, &quot;v&quot;: 0}, {&quot;t&quot;: 0.04, &quot;v&quot;: 1}, {&quot;t&quot;: 3.2, &quot;v&quot;: 1}, {&quot;t&quot;: 3.6, &quot;v&quot;: 0}]}]}"></video>
+        </div>
+      </div>
+
+      <div data-hf-id="hf-uu30" id="co-count" class="clip callout" data-start="12.92" data-duration="4.64" data-track-index="4">
+        <div data-hf-id="hf-z9dz" class="card" id="count-card" style="left: 580px; top: 300px; width: 760px">
+          <span data-hf-id="hf-aheh" class="big" id="count-num">0</span>
+          <span data-hf-id="hf-5pq3" class="lbl" id="count-lbl">events · shopstream</span>
+        </div>
+      </div>
+
+      <div data-hf-id="hf-3mid" id="co-ms" class="clip callout" data-start="33.21" data-duration="1.33" data-track-index="4">
+        <div data-hf-id="hf-2etw" class="card" id="ms-card" style="left: 1260px; top: 300px; width: 520px">
+          <span data-hf-id="hf-gv7d" class="big" id="ms-num" style="color: var(--accent)">301 ms</span>
+          <span data-hf-id="hf-keo9" class="lbl">GROUP BY over 20M rows</span>
+        </div>
+      </div>
+
+      <div data-hf-id="hf-3phq" id="co-types" class="clip callout" data-start="35.27" data-duration="8.03" data-track-index="4">
+        <div data-hf-id="hf-0uyr" class="chip" id="chip-t1" style="left: 190px; top: 190px">LowCardinality(String)</div>
+        <div data-hf-id="hf-g7ml" class="chip" id="chip-t2" style="left: 190px; top: 285px">UInt64</div>
+        <div data-hf-id="hf-rdo7" class="chip accent" id="chip-t3" style="left: 190px; top: 380px">Nullable(Decimal(38, 2))</div>
+      </div>
+
+      <div data-hf-id="hf-127e" id="co-plan" class="clip callout" data-start="48.94" data-duration="1.77" data-track-index="4">
+        <div data-hf-id="hf-utea" class="card" id="plan-card" style="left: 190px; top: 330px; width: 640px">
+          <span data-hf-id="hf-8n5v" class="lbl" style="margin: 0 0 16px">Granules read</span>
+          <span data-hf-id="hf-qegt" class="big"><span data-hf-id="hf-hklc" id="plan-num">17</span> <span data-hf-id="hf-ixxe" style="color: var(--muted); font-weight: 300">/ 1,583</span></span>
+          <div data-hf-id="hf-ufsv" class="bar"><span data-hf-id="hf-3c21" class="bar-fill" id="plan-bar"></span></div>
+        </div>
+      </div>
+
+      <div data-hf-id="hf-qmum" id="co-md" class="clip callout" data-start="51.64" data-duration="2.75" data-track-index="4">
+        <div data-hf-id="hf-d57d" class="chip accent" id="chip-md" style="left: 800px; top: 400px">Copy as Markdown</div>
+      </div>
+
+    <div data-hf-id="hf-kakz" id="cap-s1-0" class="clip cap" data-start="3.0" data-duration="3.43" data-track-index="6"><div data-hf-id="hf-7fnc" class="cap-box"><span data-hf-id="hf-dd6d" class="w kw" data-t="2.98">data-peek</span> <span data-hf-id="hf-23ga" class="w" data-t="3.95">finally</span> <span data-hf-id="hf-a7fh" class="w" data-t="4.3">now</span> <span data-hf-id="hf-p81u" class="w" data-t="4.63">speaks</span> <span data-hf-id="hf-kmfp" class="w kw" data-t="5.48">ClickHouse.</span></div></div>
+    <div data-hf-id="hf-fzth" id="cap-s2-0" class="clip cap" data-start="6.43" data-duration="3.0" data-track-index="6"><div data-hf-id="hf-u8k0" class="cap-box"><span data-hf-id="hf-5bha" class="w" data-t="6.41">I</span> <span data-hf-id="hf-pjwm" class="w" data-t="6.51">can</span> <span data-hf-id="hf-p85d" class="w" data-t="6.89">just</span> <span data-hf-id="hf-7h6p" class="w" data-t="7.21">paste</span> <span data-hf-id="hf-brr8" class="w" data-t="7.61">my</span> <span data-hf-id="hf-v4cc" class="w" data-t="8.05">string</span> <span data-hf-id="hf-cogi" class="w" data-t="8.52">and</span> <span data-hf-id="hf-m0a3" class="w" data-t="8.82">save</span></div></div>
+    <div data-hf-id="hf-lcyo" id="cap-s2-1" class="clip cap" data-start="9.43" data-duration="1.49" data-track-index="6"><div data-hf-id="hf-t1mx" class="cap-box"><span data-hf-id="hf-fbdg" class="w" data-t="9.43">connection</span> <span data-hf-id="hf-pdpw" class="w" data-t="10.33">and</span> <span data-hf-id="hf-svqo" class="w" data-t="10.51">boom,</span></div></div>
+    <div data-hf-id="hf-riqt" id="cap-s2-2" class="clip cap" data-start="10.92" data-duration="1.94" data-track-index="6"><div data-hf-id="hf-tfxy" class="cap-box"><span data-hf-id="hf-x2rz" class="w" data-t="10.92">I'm</span> <span data-hf-id="hf-9ela" class="w" data-t="10.96">just</span> <span data-hf-id="hf-9p79" class="w" data-t="11.31">connected</span> <span data-hf-id="hf-q45p" class="w" data-t="11.64">to</span> <span data-hf-id="hf-44a3" class="w kw" data-t="11.98">ClickHouse</span> <span data-hf-id="hf-eqs6" class="w" data-t="12.5">now.</span></div></div>
+    <div data-hf-id="hf-ow3v" id="cap-s3a-0" class="clip cap" data-start="12.86" data-duration="1.24" data-track-index="6"><div data-hf-id="hf-s90v" class="cap-box"><span data-hf-id="hf-ttyg" class="w" data-t="12.85">So</span> <span data-hf-id="hf-hsxc" class="w" data-t="12.89">20</span> <span data-hf-id="hf-amo1" class="w" data-t="13.36">million</span> <span data-hf-id="hf-3qss" class="w" data-t="13.83">events.</span></div></div>
+    <div data-hf-id="hf-xs8q" id="cap-s3b-0" class="clip cap" data-start="14.1" data-duration="1.63" data-track-index="6"><div data-hf-id="hf-snbw" class="cap-box"><span data-hf-id="hf-jyhr" class="w" data-t="14.08">So</span> <span data-hf-id="hf-5ln4" class="w" data-t="14.12">we</span> <span data-hf-id="hf-xaxi" class="w" data-t="14.41">have</span> <span data-hf-id="hf-0hjf" class="w" data-t="14.7">the</span> <span data-hf-id="hf-a7w1" class="w" data-t="15.06">events</span> <span data-hf-id="hf-i3rp" class="w" data-t="15.21">table,</span></div></div>
+    <div data-hf-id="hf-off5" id="cap-s3b-1" class="clip cap" data-start="15.73" data-duration="1.16" data-track-index="6"><div data-hf-id="hf-rget" class="cap-box"><span data-hf-id="hf-v71j" class="w" data-t="15.73">the</span> <span data-hf-id="hf-rp6a" class="w" data-t="15.88">products</span> <span data-hf-id="hf-o9pk" class="w" data-t="16.58">table,</span></div></div>
+    <div data-hf-id="hf-njas" id="cap-s3b-2" class="clip cap" data-start="16.89" data-duration="1.38" data-track-index="6"><div data-hf-id="hf-rupu" class="cap-box"><span data-hf-id="hf-cnlh" class="w" data-t="16.89">the</span> <span data-hf-id="hf-lvig" class="w" data-t="17.09">top</span> <span data-hf-id="hf-s71y" class="w" data-t="17.55">products,</span></div></div>
+    <div data-hf-id="hf-bfa5" id="cap-s3b-3" class="clip cap" data-start="18.27" data-duration="2.42" data-track-index="6"><div data-hf-id="hf-qnsr" class="cap-box"><span data-hf-id="hf-orlo" class="w" data-t="18.27">revenue</span> <span data-hf-id="hf-wirb" class="w" data-t="18.69">and</span> <span data-hf-id="hf-a5ez" class="w" data-t="18.89">all</span> <span data-hf-id="hf-qtp1" class="w" data-t="19.2">those</span> <span data-hf-id="hf-3h0n" class="w" data-t="20.17">things.</span></div></div>
+    <div data-hf-id="hf-tf59" id="cap-s4-0" class="clip cap" data-start="20.69" data-duration="2.49" data-track-index="6"><div data-hf-id="hf-r23s" class="cap-box"><span data-hf-id="hf-cbyr" class="w" data-t="20.68">All</span> <span data-hf-id="hf-qdkl" class="w" data-t="20.93">the</span> <span data-hf-id="hf-kzul" class="w" data-t="21.3">good</span> <span data-hf-id="hf-da14" class="w" data-t="21.66">things</span> <span data-hf-id="hf-k5v3" class="w" data-t="22.33">about</span> <span data-hf-id="hf-q6rp" class="w kw" data-t="22.45">data-peek</span></div></div>
+    <div data-hf-id="hf-47o3" id="cap-s4-1" class="clip cap" data-start="23.18" data-duration="2.74" data-track-index="6"><div data-hf-id="hf-l128" class="cap-box"><span data-hf-id="hf-2zgy" class="w" data-t="23.18">still</span> <span data-hf-id="hf-m2tn" class="w" data-t="23.48">works</span> <span data-hf-id="hf-x5c8" class="w" data-t="23.88">in</span> <span data-hf-id="hf-lve8" class="w" data-t="24.05">your</span> <span data-hf-id="hf-6rf9" class="w kw" data-t="24.45">ClickHouse</span> <span data-hf-id="hf-l817" class="w" data-t="25.28">data.</span></div></div>
+    <div data-hf-id="hf-3r17" id="cap-s4-2" class="clip cap" data-start="25.92" data-duration="3.38" data-track-index="6"><div data-hf-id="hf-kmr7" class="cap-box"><span data-hf-id="hf-969y" class="w" data-t="25.92">Just</span> <span data-hf-id="hf-q6xd" class="w" data-t="25.96">run</span> <span data-hf-id="hf-0bln" class="w" data-t="26.43">some</span> <span data-hf-id="hf-c9l3" class="w" data-t="26.9">queries</span> <span data-hf-id="hf-ad7c" class="w" data-t="27.57">and</span> <span data-hf-id="hf-i2sh" class="w" data-t="27.67">see</span> <span data-hf-id="hf-w940" class="w" data-t="27.92">how</span> <span data-hf-id="hf-7mmh" class="w" data-t="28.11">it</span> <span data-hf-id="hf-21bk" class="w" data-t="28.42">responds.</span></div></div>
+    <div data-hf-id="hf-dyyi" id="cap-s4-3" class="clip cap" data-start="29.3" data-duration="1.65" data-track-index="6"><div data-hf-id="hf-k8g6" class="cap-box"><span data-hf-id="hf-xma8" class="w" data-t="29.3">Again,</span> <span data-hf-id="hf-onlv" class="w" data-t="29.85">it's</span> <span data-hf-id="hf-f3r0" class="w" data-t="29.93">the</span> <span data-hf-id="hf-9g4x" class="w kw" data-t="30.28">ClickHouse,</span></div></div>
+    <div data-hf-id="hf-djic" id="cap-s4-4" class="clip cap" data-start="30.95" data-duration="1.01" data-track-index="6"><div data-hf-id="hf-ju55" class="cap-box"><span data-hf-id="hf-xx8i" class="w" data-t="30.95">it's</span> <span data-hf-id="hf-pdyt" class="w" data-t="31.14">so</span> <span data-hf-id="hf-wno4" class="w" data-t="31.26">magical.</span></div></div>
+    <div data-hf-id="hf-f65d" id="cap-s4-5" class="clip cap top" data-start="31.96" data-duration="2.58" data-track-index="6"><div data-hf-id="hf-jfu4" class="cap-box"><span data-hf-id="hf-bvlw" class="w" data-t="31.96">It</span> <span data-hf-id="hf-txul" class="w" data-t="32.0">just</span> <span data-hf-id="hf-43o5" class="w" data-t="32.58">returns</span> <span data-hf-id="hf-h0js" class="w" data-t="32.59">in</span> <span data-hf-id="hf-b0kh" class="w" data-t="32.94">like</span> <span data-hf-id="hf-86bq" class="w" data-t="33.14">300</span> <span data-hf-id="hf-y2hq" class="w" data-t="33.71">milliseconds.</span></div></div>
+    <div data-hf-id="hf-oalj" id="cap-s6-0" class="clip cap" data-start="34.54" data-duration="1.54" data-track-index="6"><div data-hf-id="hf-j1j3" class="cap-box"><span data-hf-id="hf-pb7e" class="w" data-t="34.57">The</span> <span data-hf-id="hf-xv0f" class="w" data-t="34.74">nullable</span> <span data-hf-id="hf-tpos" class="w" data-t="35.35">decimals,</span></div></div>
+    <div data-hf-id="hf-w93x" id="cap-s6-1" class="clip cap" data-start="36.08" data-duration="3.12" data-track-index="6"><div data-hf-id="hf-in82" class="cap-box"><span data-hf-id="hf-v7ax" class="w" data-t="36.08">we</span> <span data-hf-id="hf-3zya" class="w" data-t="36.27">respect</span> <span data-hf-id="hf-8otz" class="w" data-t="36.76">that</span> <span data-hf-id="hf-0am3" class="w kw" data-t="37.43">ClickHouse</span> <span data-hf-id="hf-1uww" class="w" data-t="38.53">types,</span></div></div>
+    <div data-hf-id="hf-okog" id="cap-s6-2" class="clip cap" data-start="39.2" data-duration="4.1" data-track-index="6"><div data-hf-id="hf-i8x1" class="cap-box"><span data-hf-id="hf-9v3j" class="w" data-t="39.2">and</span> <span data-hf-id="hf-hrr7" class="w" data-t="39.43">we</span> <span data-hf-id="hf-l3o4" class="w" data-t="39.68">just</span> <span data-hf-id="hf-ggji" class="w" data-t="40.18">displayed</span> <span data-hf-id="hf-0rve" class="w" data-t="41.32">here</span> <span data-hf-id="hf-gdwu" class="w" data-t="41.81">as</span> <span data-hf-id="hf-wn85" class="w" data-t="42.15">it</span> <span data-hf-id="hf-o2vv" class="w" data-t="42.31">comes.</span></div></div>
+    <div data-hf-id="hf-z8cm" id="cap-s7-0" class="clip cap" data-start="43.3" data-duration="2.02" data-track-index="6"><div data-hf-id="hf-hum0" class="cap-box"><span data-hf-id="hf-lcmw" class="w" data-t="43.28">If</span> <span data-hf-id="hf-0bh0" class="w" data-t="43.48">I</span> <span data-hf-id="hf-xn4f" class="w" data-t="43.62">click</span> <span data-hf-id="hf-o3z0" class="w" data-t="44.09">on</span> <span data-hf-id="hf-ipda" class="w" data-t="44.29">Explain,</span></div></div>
+    <div data-hf-id="hf-yr5g" id="cap-s7-1" class="clip cap" data-start="45.32" data-duration="3.28" data-track-index="6"><div data-hf-id="hf-hgaz" class="cap-box"><span data-hf-id="hf-uod1" class="w" data-t="45.32">it</span> <span data-hf-id="hf-w87k" class="w" data-t="45.41">just</span> <span data-hf-id="hf-ic45" class="w" data-t="45.82">shows</span> <span data-hf-id="hf-1095" class="w" data-t="46.48">the</span> <span data-hf-id="hf-9u4n" class="w" data-t="46.65">query</span> <span data-hf-id="hf-y1fw" class="w" data-t="47.14">execution</span> <span data-hf-id="hf-d6k3" class="w" data-t="48.2">plan,</span></div></div>
+    <div data-hf-id="hf-ivn6" id="cap-s7-2" class="clip cap" data-start="48.6" data-duration="2.11" data-track-index="6"><div data-hf-id="hf-8gu3" class="cap-box"><span data-hf-id="hf-79sx" class="w" data-t="48.6">the</span> <span data-hf-id="hf-jk7v" class="w" data-t="49.07">granules</span> <span data-hf-id="hf-jo17" class="w" data-t="49.34">and</span> <span data-hf-id="hf-2pgc" class="w" data-t="49.51">all</span> <span data-hf-id="hf-w797" class="w" data-t="49.85">those</span> <span data-hf-id="hf-3l4e" class="w" data-t="50.08">things.</span></div></div>
+    <div data-hf-id="hf-4qdh" id="cap-s8-0" class="clip cap" data-start="50.71" data-duration="3.68" data-track-index="6"><div data-hf-id="hf-8v54" class="cap-box"><span data-hf-id="hf-l01k" class="w" data-t="50.71">You</span> <span data-hf-id="hf-78dz" class="w" data-t="50.99">can</span> <span data-hf-id="hf-dp3i" class="w" data-t="51.28">just</span> <span data-hf-id="hf-szpt" class="w" data-t="51.73">copy</span> <span data-hf-id="hf-tfq8" class="w" data-t="52.06">to</span> <span data-hf-id="hf-scjn" class="w" data-t="52.26">clipboard</span> <span data-hf-id="hf-yji9" class="w" data-t="53.12">as</span> <span data-hf-id="hf-35cl" class="w" data-t="53.31">Markdown.</span></div></div>
+    <div data-hf-id="hf-xal2" id="cap-s9-0" class="clip cap" data-start="54.39" data-duration="3.6" data-track-index="6"><div data-hf-id="hf-7o81" class="cap-box"><span data-hf-id="hf-qkvm" class="w" data-t="54.51">You</span> <span data-hf-id="hf-duik" class="w" data-t="55.13">can</span> <span data-hf-id="hf-izj9" class="w" data-t="55.49">play</span> <span data-hf-id="hf-ytp4" class="w" data-t="55.58">around</span> <span data-hf-id="hf-gtla" class="w" data-t="56.23">with</span> <span data-hf-id="hf-316m" class="w" data-t="56.66">it,</span> <span data-hf-id="hf-s1m9" class="w" data-t="57.08">let</span> <span data-hf-id="hf-9zxp" class="w" data-t="57.41">us</span> <span data-hf-id="hf-f1ny" class="w" data-t="57.61">know.</span></div></div>
+
+      <section data-hf-id="hf-y83p" id="end" class="clip layer" data-start="57.59" data-duration="5.5" data-track-index="7">
+        <div data-hf-id="hf-5si6" class="end-bg" id="end-bg"><div data-hf-id="hf-tkle" class="glow" id="end-glow"></div></div>
+        <div data-hf-id="hf-d1zs" class="stack">
+          <span data-hf-id="hf-bm3z" class="end1" id="end1">ClickHouse support is in beta.</span>
+          <span data-hf-id="hf-qcio" class="end2" id="end2">Query and browse it in data-peek, free for personal use.</span>
+          <div data-hf-id="hf-uez9" class="url-row" id="end-url">
+            <img data-hf-id="hf-dvg8" src="logo.svg" alt="data-peek logo">
+            <span data-hf-id="hf-g916" class="url">datapeek.dev</span>
+          </div>
+        </div>
+      </section>
+
+      <audio data-hf-id="hf-20wm" id="music-a" src="assets/music.mp3" data-audio-group="music" data-start="0" data-duration="49.85" data-media-start="0" data-track-index="9" data-automation="{&quot;version&quot;: 1, &quot;lanes&quot;: [{&quot;target&quot;: &quot;volume&quot;, &quot;points&quot;: [{&quot;t&quot;: 0, &quot;v&quot;: 0}, {&quot;t&quot;: 0.3, &quot;v&quot;: 0.5}, {&quot;t&quot;: 2.8, &quot;v&quot;: 0.5}, {&quot;t&quot;: 3.4, &quot;v&quot;: 0.16}, {&quot;t&quot;: 48.4, &quot;v&quot;: 0.16}, {&quot;t&quot;: 49.85, &quot;v&quot;: 0}]}]}" data-fx-carve="{&quot;enabled&quot;:true,&quot;sources&quot;:[&quot;voice&quot;],&quot;strength&quot;:0.8}" data-fx-chain="{&quot;version&quot;:1,&quot;nodes&quot;:[{&quot;type&quot;:&quot;peaking&quot;,&quot;id&quot;:&quot;n1&quot;,&quot;fromCarve&quot;:true,&quot;params&quot;:{&quot;frequency&quot;:250,&quot;gain&quot;:-7.4,&quot;q&quot;:2.06}},{&quot;type&quot;:&quot;peaking&quot;,&quot;id&quot;:&quot;n2&quot;,&quot;fromCarve&quot;:true,&quot;params&quot;:{&quot;frequency&quot;:400,&quot;gain&quot;:-7.4,&quot;q&quot;:2.06}},{&quot;type&quot;:&quot;peaking&quot;,&quot;id&quot;:&quot;n3&quot;,&quot;fromCarve&quot;:true,&quot;params&quot;:{&quot;frequency&quot;:630,&quot;gain&quot;:-7.4,&quot;q&quot;:2.06}},{&quot;type&quot;:&quot;peaking&quot;,&quot;id&quot;:&quot;n4&quot;,&quot;fromCarve&quot;:true,&quot;params&quot;:{&quot;frequency&quot;:1000,&quot;gain&quot;:-7.4,&quot;q&quot;:2.06}},{&quot;type&quot;:&quot;peaking&quot;,&quot;id&quot;:&quot;n5&quot;,&quot;fromCarve&quot;:true,&quot;params&quot;:{&quot;frequency&quot;:1600,&quot;gain&quot;:-14.8,&quot;q&quot;:2.06}},{&quot;type&quot;:&quot;peaking&quot;,&quot;id&quot;:&quot;n6&quot;,&quot;fromCarve&quot;:true,&quot;params&quot;:{&quot;frequency&quot;:2500,&quot;gain&quot;:-7.4,&quot;q&quot;:2.06}},{&quot;type&quot;:&quot;gain&quot;,&quot;id&quot;:&quot;n7&quot;,&quot;fromCarve&quot;:true,&quot;params&quot;:{&quot;gain&quot;:0}}]}"></audio>
+      <audio data-hf-id="hf-0e61" id="music-b" src="assets/music.mp3" data-audio-group="music" data-start="48.4" data-duration="14.69" data-media-start="33" data-track-index="10" data-automation="{&quot;version&quot;: 1, &quot;lanes&quot;: [{&quot;target&quot;: &quot;volume&quot;, &quot;points&quot;: [{&quot;t&quot;: 0, &quot;v&quot;: 0}, {&quot;t&quot;: 1.4, &quot;v&quot;: 0.16}, {&quot;t&quot;: 9.19, &quot;v&quot;: 0.16}, {&quot;t&quot;: 9.99, &quot;v&quot;: 0.5}, {&quot;t&quot;: 13.49, &quot;v&quot;: 0.5}, {&quot;t&quot;: 14.69, &quot;v&quot;: 0}]}]}" data-fx-carve="{&quot;enabled&quot;:true,&quot;sources&quot;:[&quot;voice&quot;],&quot;strength&quot;:0.8}" data-fx-chain="{&quot;version&quot;:1,&quot;nodes&quot;:[{&quot;type&quot;:&quot;peaking&quot;,&quot;id&quot;:&quot;n1&quot;,&quot;fromCarve&quot;:true,&quot;params&quot;:{&quot;frequency&quot;:250,&quot;gain&quot;:-7.4,&quot;q&quot;:2.06}},{&quot;type&quot;:&quot;peaking&quot;,&quot;id&quot;:&quot;n2&quot;,&quot;fromCarve&quot;:true,&quot;params&quot;:{&quot;frequency&quot;:400,&quot;gain&quot;:-7.4,&quot;q&quot;:2.06}},{&quot;type&quot;:&quot;peaking&quot;,&quot;id&quot;:&quot;n3&quot;,&quot;fromCarve&quot;:true,&quot;params&quot;:{&quot;frequency&quot;:630,&quot;gain&quot;:-7.4,&quot;q&quot;:2.06}},{&quot;type&quot;:&quot;peaking&quot;,&quot;id&quot;:&quot;n4&quot;,&quot;fromCarve&quot;:true,&quot;params&quot;:{&quot;frequency&quot;:1000,&quot;gain&quot;:-7.4,&quot;q&quot;:2.06}},{&quot;type&quot;:&quot;peaking&quot;,&quot;id&quot;:&quot;n5&quot;,&quot;fromCarve&quot;:true,&quot;params&quot;:{&quot;frequency&quot;:1600,&quot;gain&quot;:-14.8,&quot;q&quot;:2.06}},{&quot;type&quot;:&quot;peaking&quot;,&quot;id&quot;:&quot;n6&quot;,&quot;fromCarve&quot;:true,&quot;params&quot;:{&quot;frequency&quot;:2500,&quot;gain&quot;:-7.4,&quot;q&quot;:2.06}},{&quot;type&quot;:&quot;gain&quot;,&quot;id&quot;:&quot;n7&quot;,&quot;fromCarve&quot;:true,&quot;params&quot;:{&quot;gain&quot;:0}}]}"></audio>
+    </div>
+
+    <script>
+      const CUE = {"count_in": 12.92, "count_out": 17.56, "ms_card": 33.21, "ms_end": 34.54, "types_zoom": 34.82, "types_chip": 35.27, "types_end": 43.3, "plan_push": 45.24, "plan_card": 48.94, "plan_end": 50.71, "md_chip": 51.64, "md_end": 54.39, "end": 57.59, "total": 63.09, "count_dur": 4.64};
+      const ZOOM = {"types": [1.8, -252.0, 37.8], "plan": [1.35, -128.9, 0.0]};
+      const tl = gsap.timeline({ paused: true });
+
+      const cycle = 3.2;
+      tl.fromTo("#glow", { scale: 0.94, opacity: 0.85 }, { scale: 1.06, opacity: 1, duration: cycle, ease: "sine.inOut", yoyo: true, repeat: Math.max(0, Math.floor(CUE.total / cycle) - 1) }, 0);
+
+      // Open: logo, wordmark, "+", ClickHouse types in, BETA chip, then a quick exit before the cut.
+      tl.fromTo("#open-logo", { scale: 0, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.5, ease: "power3.out" }, 0.12);
+      tl.fromTo("#dp-word", { x: -28, opacity: 0 }, { x: 0, opacity: 1, duration: 0.45, ease: "expo.out" }, 0.3);
+      tl.fromTo("#open-plus", { opacity: 0, scale: 0.6 }, { opacity: 1, scale: 1, duration: 0.3, ease: "power3.out" }, 0.62);
+      gsap.utils.toArray("#ch-word .ch").forEach((el, i) => {
+        tl.fromTo(el, { opacity: 0 }, { opacity: 1, duration: 0.01 }, 0.8 + i * 0.055);
+      });
+      tl.fromTo("#open-beta", { scale: 0, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.45, ease: "power3.out" }, 1.55);
+      tl.to("#open-lockup", { scale: 1.04, duration: 1.1, ease: "sine.inOut" }, 1.7);
+      tl.to(["#open-lockup", "#open-beta"], { opacity: 0, duration: 0.2, ease: "power2.in" }, 2.8);
+
+      // Camera punch-ins on the footage wrapper: outer scale, inner counter-translate; snap back at the cut.
+      tl.set("#cam", { scale: 1 }, 0);
+      tl.set("#cam-inner", { x: 0, y: 0 }, 0);
+      function punch(key, at, until, dur, ease) {
+        const [s, x, y] = ZOOM[key];
+        tl.to("#cam", { scale: s, duration: dur, ease }, at);
+        tl.to("#cam-inner", { x, y, duration: dur, ease }, at);
+        tl.set("#cam", { scale: 1 }, until);
+        tl.set("#cam-inner", { x: 0, y: 0 }, until);
+      }
+      punch("types", CUE.types_zoom, CUE.types_end, 0.6, "power3.out");
+      punch("plan", CUE.plan_push, CUE.plan_end, 2.4, "power2.inOut");
+
+      // 20,000,000 counts up while it grows into place, then slides out left.
+      const counter = document.getElementById("count-num");
+      const fmt = (n) => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+      const count = { v: 0 };
+      tl.fromTo("#count-card", { scale: 0.7, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.45, ease: "power3.out" }, CUE.count_in);
+      tl.to(count, { v: 20000000, duration: 1.1, ease: "expo.out", onUpdate: () => { counter.textContent = fmt(count.v); } }, CUE.count_in + 0.1);
+      tl.fromTo("#count-num", { scale: 0.82 }, { scale: 1, duration: 1.1, ease: "expo.out" }, CUE.count_in + 0.1);
+      tl.fromTo("#count-lbl", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }, CUE.count_in + 0.5);
+      tl.to("#count-card", { x: -90, opacity: 0, duration: 0.35, ease: "power2.in" }, CUE.count_out - 0.38);
+
+      tl.fromTo("#ms-card", { scale: 0, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.45, ease: "power3.out" }, CUE.ms_card);
+
+      ["#chip-t1", "#chip-t2", "#chip-t3"].forEach((id, i) => {
+        tl.fromTo(id, { y: -24, opacity: 0 }, { y: 0, opacity: 1, duration: 0.4, ease: "power3.out" }, CUE.types_chip + i * 0.32);
+      });
+      tl.to(["#chip-t1", "#chip-t2", "#chip-t3"], { opacity: 0, duration: 0.25, ease: "power2.in" }, CUE.types_end - 0.3);
+
+      const planNum = document.getElementById("plan-num");
+      const plan = { v: 0 };
+      tl.fromTo("#plan-card", { scale: 0.7, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.45, ease: "power3.out" }, CUE.plan_card);
+      tl.to(plan, { v: 17, duration: 0.6, ease: "power2.out", onUpdate: () => { planNum.textContent = String(Math.round(plan.v)); } }, CUE.plan_card + 0.1);
+      tl.fromTo("#plan-bar", { scaleX: 0 }, { scaleX: 17 / 1583, duration: 0.6, ease: "power2.out" }, CUE.plan_card + 0.1);
+
+      tl.fromTo("#chip-md", { scale: 0, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.4, ease: "power3.out" }, CUE.md_chip);
+
+      // Captions: each group rises in; words light up as they are spoken (one driver for every word).
+      gsap.utils.toArray(".cap").forEach((el) => {
+        const at = parseFloat(el.dataset.start);
+        tl.fromTo(el.querySelector(".cap-box"), { y: 14, opacity: 0 }, { y: 0, opacity: 1, duration: 0.18, ease: "power2.out" }, at);
+      });
+      const words = Array.from(document.querySelectorAll(".cap .w")).map((el) => [el, parseFloat(el.dataset.t)]);
+      const drive = { t: 0 };
+      tl.to(drive, { t: CUE.total, duration: CUE.total, ease: "none", onUpdate: () => { for (const [el, t] of words) el.classList.toggle("on", drive.t >= t); } }, 0);
+
+      // End card: crossfade over the last footage, then the lines arrive and hold.
+      tl.fromTo("#end-bg", { opacity: 0 }, { opacity: 1, duration: 0.4, ease: "power2.out" }, CUE.end);
+      tl.fromTo("#end1", { y: 40, opacity: 0 }, { y: 0, opacity: 1, duration: 0.6, ease: "expo.out" }, CUE.end + 0.35);
+      tl.fromTo("#end2", { y: 30, opacity: 0 }, { y: 0, opacity: 1, duration: 0.6, ease: "expo.out" }, CUE.end + 0.75);
+      tl.fromTo("#end-url", { scale: 0.7, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.5, ease: "power3.out" }, CUE.end + 1.25);
+      tl.fromTo("#end-glow", { scale: 0.9 }, { scale: 1.08, duration: 5, ease: "sine.inOut" }, CUE.end);
+
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

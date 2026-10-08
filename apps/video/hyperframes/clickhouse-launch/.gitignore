@@ -1,0 +1,15 @@
+# Generated output
+renders/
+snapshots/
+# Tool state and caches
+.hyperframes/
+.media/
+.thumbnails/
+.waveform-cache/
+.DS_Store
+# Scaffold boilerplate written by `hyperframes init`
+AGENTS.md
+CLAUDE.md
+# Source media stays out of git: the recording lives in ~/w/data-peek/videos, the music in v026-launch/tour
+assets/click-house-demo.mp4
+assets/music.mp3
