@@ -104,6 +104,13 @@ export function SchemaIntelPanel({ tabId }: SchemaIntelPanelProps) {
       >
   )
 
+  const [isAiAuditing, setIsAiAuditing] = useState(false)
+  const [aiReport, setAiReport] = useState<{
+    rating: string
+    summary: string
+    recommendations: Array<{ title: string; explanation: string; sql?: string }>
+  } | null>(null)
+
   // Group findings by checkId, with severity sort within.
   const findingsByCheck = useMemo(() => {
     const map = new Map<SchemaIntelCheckId, SchemaIntelFinding[]>()
@@ -152,13 +159,6 @@ export function SchemaIntelPanel({ tabId }: SchemaIntelPanelProps) {
   const criticalCount = report?.findings.filter((f) => f.severity === 'critical').length ?? 0
   const warningCount = report?.findings.filter((f) => f.severity === 'warning').length ?? 0
   const infoCount = report?.findings.filter((f) => f.severity === 'info').length ?? 0
-
-  const [isAiAuditing, setIsAiAuditing] = useState(false)
-  const [aiReport, setAiReport] = useState<{
-    rating: string
-    summary: string
-    recommendations: Array<{ title: string; explanation: string; sql?: string }>
-  } | null>(null)
 
   const handleAiAudit = async () => {
     if (!connection) return
