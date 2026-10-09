@@ -15,6 +15,7 @@ import {
   Pencil,
   MoreHorizontal,
   FunctionSquare,
+  ListOrdered,
   Workflow,
   ArrowRight,
   Eye,
@@ -71,6 +72,7 @@ import type {
   TableInfo,
   RoutineInfo,
   TriggerInfo,
+  SequenceInfo,
   QueryResult as IpcQueryResult,
   CapabilityRow
 } from '@shared/index'
@@ -114,11 +116,28 @@ function DataTypeBadge({ type }: { type: string }) {
   )
 }
 
+function SequenceRow({ sequence }: { sequence: SequenceInfo }) {
+  return (
+    <SidebarMenuSubButton className="cursor-default" title={formatSequenceDetail(sequence)}>
+      <ListOrdered className="size-3.5 text-violet-500" />
+      <span className="flex-1 truncate">{sequence.name}</span>
+      <span className="text-[11px] text-muted-foreground truncate">
+        {formatSequenceDetail(sequence)}
+      </span>
+    </SidebarMenuSubButton>
+  )
+}
+
+function formatSequenceDetail(sequence: SequenceInfo): string {
+  return `${sequence.dataType} · start ${sequence.startValue} · step ${sequence.increment}`
+}
+
 // Union type for items in virtualized list
 type SchemaItem =
   | { type: 'table'; data: TableInfo; schemaName: string }
   | { type: 'routine'; data: RoutineInfo; schemaName: string }
   | { type: 'trigger'; data: TriggerInfo; schemaName: string }
+  | { type: 'sequence'; data: SequenceInfo; schemaName: string }
 
 // Actions available on a trigger row (open prefilled query tabs)
 interface TriggerActions {
@@ -378,6 +397,8 @@ function VirtualizedSchemaItems({
       if (item.type === 'table') {
         const tableKey = `${schemaName}.${item.data.name}`
         return expandedTables.has(tableKey) ? 28 + item.data.columns.length * 24 : 28
+      } else if (item.type === 'sequence') {
+        return 28
       } else if (item.type === 'trigger') {
         const triggerKey = `${schemaName}.${item.data.table}.${item.data.name}`
         return expandedTriggers.has(triggerKey) ? 28 + triggerDetailCount(item.data) * 24 : 28
@@ -560,6 +581,23 @@ function VirtualizedSchemaItems({
                 )}
               </SidebarMenuSubItem>
             )
+          } else if (item.type === 'sequence') {
+            const sequence = item.data
+            return (
+              <SidebarMenuSubItem
+                key={`${schemaName}.sequence.${sequence.name}`}
+                data-index={virtualRow.index}
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: '100%',
+                  transform: `translateY(${virtualRow.start}px)`
+                }}
+              >
+                <SequenceRow sequence={sequence} />
+              </SidebarMenuSubItem>
+            )
           } else if (item.type === 'trigger') {
             const trigger = item.data
             const triggerKey = `${schemaName}.${trigger.table}.${trigger.name}`
@@ -721,6 +759,11 @@ function VirtualizedSchemaItems({
 
 export function SchemaExplorer() {
   const schemas = useConnectionStore((s) => s.schemas)
+  const sequences = useConnectionStore((s) => s.sequences)
+  const schemaSequences = React.useCallback(
+    (schemaName: string) => sequences.filter((sequence) => sequence.schema === schemaName),
+    [sequences]
+  )
   const isLoadingSchema = useConnectionStore((s) => s.isLoadingSchema)
   const schemaError = useConnectionStore((s) => s.schemaError)
   const activeConnectionId = useConnectionStore((s) => s.activeConnectionId)
@@ -802,10 +845,12 @@ export function SchemaExplorer() {
         (schema) =>
           schema.tables.length > 0 ||
           (schema.routines?.length ?? 0) > 0 ||
-          (schema.triggers?.length ?? 0) > 0
+          (schema.triggers?.length ?? 0) > 0 ||
+          schemaSequences(schema.name).length > 0
       )
   }, [
     schemas,
+    schemaSequences,
     showTables,
     showViews,
     showMaterializedViews,
@@ -1454,6 +1499,7 @@ export function SchemaExplorer() {
                       <span>{schema.name}</span>
                       <Badge variant="outline" className="ml-auto text-[11px] px-1.5 py-0">
                         {schema.tables.length +
+                          schemaSequences(schema.name).length +
                           (schema.routines?.length ?? 0) +
                           (schema.triggers?.length ?? 0)}
                       </Badge>
@@ -1461,8 +1507,10 @@ export function SchemaExplorer() {
                   </CollapsibleTrigger>
                   <CollapsibleContent>
                     {(() => {
+                      const schemaSeqs = schemaSequences(schema.name)
                       const itemCount =
                         schema.tables.length +
+                        schemaSeqs.length +
                         (schema.routines?.length ?? 0) +
                         (schema.triggers?.length ?? 0)
                       const shouldVirtualize = itemCount > VIRTUALIZATION_THRESHOLD
@@ -1473,6 +1521,11 @@ export function SchemaExplorer() {
                           ...schema.tables.map((table): SchemaItem => ({
                             type: 'table',
                             data: table,
+                            schemaName: schema.name
+                          })),
+                          ...schemaSeqs.map((sequence): SchemaItem => ({
+                            type: 'sequence',
+                            data: sequence,
                             schemaName: schema.name
                           })),
                           ...(schema.routines ?? []).map((routine): SchemaItem => ({
@@ -1685,6 +1738,12 @@ export function SchemaExplorer() {
                               </Collapsible>
                             )
                           })}
+                          {/* Sequences */}
+                          {schemaSeqs.map((sequence) => (
+                            <SidebarMenuSubItem key={`${schema.name}.sequence.${sequence.name}`}>
+                              <SequenceRow sequence={sequence} />
+                            </SidebarMenuSubItem>
+                          ))}
                           {/* Routines (Functions and Stored Procedures) */}
                           {schema.routines?.map((routine, routineIndex) => {
                             const routineKey = `${schema.name}.${routine.name}`
