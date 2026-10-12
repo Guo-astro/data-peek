@@ -1371,8 +1371,9 @@ export class MySQLAdapter implements DatabaseAdapter {
 
   async killQuery(
     config: ConnectionConfig,
-    pid: number
+    pid: number | string
   ): Promise<{ success: boolean; error?: string }> {
+    if (typeof pid !== 'number') throw new Error('MySQL requires a numeric PID')
     try {
       return await withMySQLConnection(config, async (connection) => {
         await connection.query(`KILL QUERY ${Number(pid)}`)

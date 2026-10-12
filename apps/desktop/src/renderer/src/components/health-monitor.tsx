@@ -121,13 +121,13 @@ export function HealthMonitor({ tabId }: HealthMonitorProps) {
     fetchAll(connection)
   }
 
-  const handleKillQuery = async (pid: number) => {
+  const handleKillQuery = async (pid: number | string) => {
     if (!connection) return
     await killQuery(connection, pid)
     await useHealthStore.getState().fetchActiveQueries(connection)
   }
 
-  const handleKillBlocker = async (pid: number) => {
+  const handleKillBlocker = async (pid: number | string) => {
     if (!connection) return
     await killQuery(connection, pid)
     await useHealthStore.getState().fetchLocks(connection)

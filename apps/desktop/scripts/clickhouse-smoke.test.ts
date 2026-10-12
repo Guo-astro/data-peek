@@ -11,15 +11,17 @@ vi.mock('../src/main/lib/logger', () => ({
   createLogger: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() })
 }))
 
-const { ClickHouseAdapter, closeAllClickHousePools } =
-  await import('../src/main/adapters/clickhouse-adapter')
+const { ClickHouseAdapter, closeAllClickHousePools } = await import(
+  '../src/main/adapters/clickhouse-adapter'
+)
 const { withClickHouseClient } = await import('../src/main/adapters/clickhouse-pool-manager')
 const { cancelQuery } = await import('../src/main/query-tracker')
 const { requireCapability } = await import('../src/main/lib/capability-guard')
 const { runReadOnlyQuery } = await import('../src/main/mcp/read-guard')
 const { getAdapter } = await import('../src/main/db-adapter')
-const { buildQualifiedTableRef, buildSelectQuery } =
-  await import('../src/renderer/src/lib/sql-helpers')
+const { buildQualifiedTableRef, buildSelectQuery } = await import(
+  '../src/renderer/src/lib/sql-helpers'
+)
 
 const port = Number(process.env.CH_PORT ?? 58123)
 const config: ConnectionConfig = {
@@ -270,6 +272,42 @@ describe('health', () => {
       expect(t.dataSizeBytes + t.indexSizeBytes).toBe(t.totalSizeBytes)
     }
   })
+
+  it('lists a running query and kills it by pid', async () => {
+    const executionId = `smoke-active-${Date.now()}`
+    const running = adapter
+      .queryMultiple(
+        config,
+        'SELECT sleepEachRow(1) FROM numbers(30) SETTINGS max_block_size = 1',
+        {
+          executionId
+        }
+      )
+      .then(
+        () => 'resolved',
+        (e: Error) => e.message
+      )
+    await new Promise((r) => setTimeout(r, 500))
+
+    const active = await adapter.getActiveQueries(config)
+    expect(active.length).toBeGreaterThanOrEqual(1)
+    const ours = active.find((q) => String(q.pid).startsWith(`${executionId}:`))!
+    expect(ours).toBeDefined()
+    expect(typeof ours.pid).toBe('string')
+    expect(ours.pid.length).toBeGreaterThan(0)
+    expect(ours.durationMs).toBeGreaterThanOrEqual(0)
+    expect(ours.state).toBe('running')
+
+    const result = await adapter.killQuery(config, ours.pid)
+    expect(result.success).toBe(true)
+    await running
+
+    await new Promise((r) => setTimeout(r, 1000))
+    const live = await selectRows<{ query_id: string }>(
+      `SELECT query_id FROM system.processes WHERE query_id = '${ours.pid}'`
+    )
+    expect(live).toEqual([])
+  }, 15_000)
 })
 
 describe('gating', () => {
@@ -299,10 +337,8 @@ describe('gating', () => {
         GATED_TAG
       ])
     ).rejects.toThrow(same('inlineEdit'))
-    await expect(adapter.getActiveQueries(config)).rejects.toThrow(same('healthActiveQueries'))
     await expect(adapter.getCacheStats(config)).rejects.toThrow(same('healthCacheStats'))
     await expect(adapter.getLocks(config)).rejects.toThrow(same('healthLocks'))
-    await expect(adapter.killQuery(config, 1)).rejects.toThrow(same('killQuery'))
   })
 
   it('reports every Schema Intel check as skipped', async () => {

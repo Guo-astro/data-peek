@@ -26,7 +26,7 @@ interface HealthState {
   fetchLocks: (config: ConnectionConfig) => Promise<void>
   killQuery: (
     config: ConnectionConfig,
-    pid: number
+    pid: number | string
   ) => Promise<{ success: boolean; error?: string }>
   setRefreshInterval: (ms: number) => void
   startPolling: (config: ConnectionConfig, schema?: string) => void

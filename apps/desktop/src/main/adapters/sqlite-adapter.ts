@@ -766,8 +766,7 @@ export class SQLiteAdapter implements DatabaseAdapter {
 
   async killQuery(
     _config: ConnectionConfig,
-
-    _pid: number
+    _pid: number | string
   ): Promise<{ success: boolean; error?: string }> {
     throw new Error('killQuery not implemented for SQLite')
   }

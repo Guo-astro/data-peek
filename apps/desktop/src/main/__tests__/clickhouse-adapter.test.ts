@@ -410,8 +410,6 @@ describe('ClickHouseAdapter backstops', () => {
     )
     await expect(adapter.getCacheStats()).rejects.toThrow('Cache monitoring')
     await expect(adapter.getLocks()).rejects.toThrow('Lock monitoring')
-    await expect(adapter.killQuery()).rejects.toThrow('Kill query')
-    await expect(adapter.getActiveQueries()).rejects.toThrow('Active query monitoring')
     await expect(adapter.queryMultiple(config, 'SELECT 1', { sessionId: 's' })).rejects.toThrow(
       'Transaction support'
     )

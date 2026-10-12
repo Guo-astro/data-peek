@@ -105,11 +105,11 @@ export const DB_CAPABILITIES = {
     performanceAnalysis: false,
     columnStats: true,
     crossTabRefs: false,
-    healthActiveQueries: false,
+    healthActiveQueries: true,
     healthTableSizes: true,
     healthCacheStats: false,
     healthLocks: false,
-    killQuery: false,
+    killQuery: true,
   },
 } as const satisfies Record<DatabaseType, CapabilityRow>;
 

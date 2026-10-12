@@ -537,7 +537,7 @@ interface DataPeekApi {
     locks: (config: ConnectionConfig) => Promise<IpcResponse<LockInfo[]>>
     killQuery: (
       config: ConnectionConfig,
-      pid: number
+      pid: number | string
     ) => Promise<IpcResponse<{ success: boolean; error?: string }>>
   }
   pgDump: {

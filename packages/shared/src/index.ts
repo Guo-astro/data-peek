@@ -2621,7 +2621,8 @@ export interface PgNotificationConnectionStatus {
 }
 
 export interface ActiveQuery {
-  pid: number;
+  /** Numeric PID for PG/MySQL/MSSQL. UUID string query_id for ClickHouse. */
+  pid: number | string;
   user: string;
   database: string;
   state: string;

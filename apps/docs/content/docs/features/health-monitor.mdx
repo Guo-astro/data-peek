@@ -65,9 +65,10 @@ A write is hanging. Open the Health Monitor, drop the refresh to **2s**, and che
 Each panel has a **Share** button that exports the data as a styled PNG image with your choice of background theme, perfect for sharing in Slack or documentation. See [Share as Image](/docs/features/share-as-image).
 
 <Callout type="info">
-  PostgreSQL, MySQL, and SQL Server connections get every panel. SQLite and
-  ClickHouse connections get Table Sizes only. On ClickHouse, sizes come from
-  the active parts in `system.parts`.
+  PostgreSQL, MySQL, and SQL Server connections get every panel. SQLite
+  connections get Table Sizes only. ClickHouse connections get Active Queries
+  (from `system.processes`, with Kill) and Table Sizes (from the active parts in
+  `system.parts`).
 </Callout>
 
 ## Related

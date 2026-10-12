@@ -1423,8 +1423,9 @@ export class MSSQLAdapter implements DatabaseAdapter {
 
   async killQuery(
     config: ConnectionConfig,
-    pid: number
+    pid: number | string
   ): Promise<{ success: boolean; error?: string }> {
+    if (typeof pid !== 'number') throw new Error('SQL Server requires a numeric PID')
     try {
       return await withMSSQLPool(config, async (pool) => {
         await pool.request().query(`KILL ${Number(pid)}`)

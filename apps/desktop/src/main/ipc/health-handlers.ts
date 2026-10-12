@@ -55,8 +55,11 @@ export function registerHealthHandlers(): void {
     }
   })
 
-  ipcMain.handle('db:kill-query', async (_, config: ConnectionConfig, pid: number) => {
+  ipcMain.handle('db:kill-query', async (_, config: ConnectionConfig, pid: unknown) => {
     try {
+      if (typeof pid !== 'number' && typeof pid !== 'string') {
+        return { success: false, error: `Invalid pid type: ${typeof pid}` } as IpcResponse<never>
+      }
       requireCapability(config, 'killQuery')
       const adapter = getAdapter(config)
       const result = await adapter.killQuery(config, pid)

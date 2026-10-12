@@ -702,7 +702,7 @@ const api = {
       ipcRenderer.invoke('db:locks', config),
     killQuery: (
       config: ConnectionConfig,
-      pid: number
+      pid: number | string
     ): Promise<IpcResponse<{ success: boolean; error?: string }>> =>
       ipcRenderer.invoke('db:kill-query', config, pid)
   },

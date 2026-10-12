@@ -53,7 +53,7 @@ Turn on **SSL** to connect over HTTPS. To reach a server behind a bastion host, 
 | Query plans                  |    Text plans    |
 | Cancel and timeouts          |        ✓         |
 | Column statistics            |        ✓         |
-| Health Monitor               | Table Sizes only |
+| Health Monitor               | Active Queries, Table Sizes |
 | AI assistant                 |        ✓         |
 | MCP server                   |        ✓         |
 | SSH tunnels                  |        ✓         |
@@ -74,7 +74,7 @@ data-peek hides these features on ClickHouse connections:
 - Triggers
 - SQL dump export and import
 - Schema Intel
-- Health Monitor panels for active queries, locks, and cache stats
+- Health Monitor panels for locks and cache stats
 - Cross-tab `@name` references
 
 ## Query Execution
@@ -115,6 +115,15 @@ The editor suggests common ClickHouse functions, such as `uniqExact`, `toStartOf
 - Row counts come from the `total_rows` estimate in `system.tables`.
 
 ClickHouse has no foreign keys, so ER diagrams show tables and columns without relationship lines.
+
+## Health Monitor
+
+The Health Monitor (click **Health Monitor** in the sidebar) shows two panels for ClickHouse connections:
+
+- **Active Queries** — lists queries currently running in `system.processes`, with the user, elapsed time, and a truncated view of the query text. Use the **Kill** button (skull icon) to send `KILL QUERY` for a selected query. The PID column shows the ClickHouse `query_id`, which is a string rather than an integer.
+- **Table Sizes** — shows per-table disk usage from `system.parts`.
+
+Cache hit ratios and lock monitoring are not available for ClickHouse.
 
 ## Column Statistics
 

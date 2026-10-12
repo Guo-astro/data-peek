@@ -229,7 +229,10 @@ export interface DatabaseAdapter {
   getLocks(config: ConnectionConfig): Promise<LockInfo[]>
 
   /** Cancel/kill a running query by PID */
-  killQuery(config: ConnectionConfig, pid: number): Promise<{ success: boolean; error?: string }>
+  killQuery(
+    config: ConnectionConfig,
+    pid: number | string
+  ): Promise<{ success: boolean; error?: string }>
 
   /**
    * Run a set of schema diagnostic checks against the database. If `checks`

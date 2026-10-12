@@ -1584,8 +1584,9 @@ export class PostgresAdapter implements DatabaseAdapter {
 
   async killQuery(
     config: ConnectionConfig,
-    pid: number
+    pid: number | string
   ): Promise<{ success: boolean; error?: string }> {
+    if (typeof pid !== 'number') throw new Error('PostgreSQL requires a numeric PID')
     return withPgClient(config, async (client) => {
       const result = await client.query('SELECT pg_cancel_backend($1) AS cancelled', [pid])
       const cancelled = result.rows[0]?.cancelled === true

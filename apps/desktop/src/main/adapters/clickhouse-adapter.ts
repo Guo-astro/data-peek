@@ -524,8 +524,37 @@ export class ClickHouseAdapter implements DatabaseAdapter {
     })
   }
 
-  async getActiveQueries(): Promise<ActiveQuery[]> {
-    throw new CapabilityError('clickhouse', 'healthActiveQueries')
+  async getActiveQueries(config: ConnectionConfig): Promise<ActiveQuery[]> {
+    return withClickHouseClient(config, async (client) => {
+      const rows = await this.rows<{
+        pid: string
+        user: string
+        database: string
+        state: string
+        duration: string
+        durationMs: number
+        query: string
+      }>(client, {
+        query: `SELECT query_id                              AS pid,
+                       user                                  AS user,
+                       current_database                      AS database,
+                       'running'                             AS state,
+                       toString(toDecimalString(elapsed, 1)) || 's' AS duration,
+                       toFloat64(elapsed) * 1000             AS durationMs,
+                       query                                 AS query
+                FROM system.processes
+                WHERE query_id != queryID()`
+      })
+      return rows.map((row) => ({
+        pid: row.pid,
+        user: row.user,
+        database: row.database,
+        state: row.state,
+        duration: row.duration,
+        durationMs: Number(row.durationMs),
+        query: row.query
+      }))
+    })
   }
 
   async getTableSizes(
@@ -560,8 +589,21 @@ export class ClickHouseAdapter implements DatabaseAdapter {
     throw new CapabilityError('clickhouse', 'healthLocks')
   }
 
-  async killQuery(): Promise<{ success: boolean; error?: string }> {
-    throw new CapabilityError('clickhouse', 'killQuery')
+  async killQuery(
+    config: ConnectionConfig,
+    pid: number | string
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      await withClickHouseClient(config, async (client) => {
+        await client.command({
+          query: `KILL QUERY WHERE query_id = {id:String} SYNC`,
+          query_params: { id: String(pid) }
+        })
+      })
+      return { success: true }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
   }
 
   async runSchemaIntel(
