@@ -1,0 +1,83 @@
+name: ClickHouse smoke
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'apps/desktop/src/main/adapters/clickhouse-*'
+      - 'apps/desktop/src/main/__tests__/clickhouse-*'
+      - 'apps/desktop/scripts/clickhouse-smoke.test.ts'
+      - 'apps/desktop/vitest.smoke.config.ts'
+      - 'apps/desktop/package.json'
+      - 'apps/desktop/src/main/query-tracker.ts'
+      - 'apps/desktop/src/main/lib/capability-guard.ts'
+      - 'apps/desktop/src/main/mcp/read-guard.ts'
+      - 'apps/desktop/src/main/db-adapter.ts'
+      - 'apps/desktop/src/renderer/src/lib/sql-helpers.ts'
+      - 'packages/shared/**'
+      - 'seeds/clickhouse/**'
+      - '.github/workflows/clickhouse-smoke.yml'
+  workflow_dispatch:
+
+# The job runs pull request code, so it only gets read access to the repo.
+permissions:
+  contents: read
+
+# A new commit on the same branch supersedes any in-flight run.
+concurrency:
+  group: clickhouse-smoke-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    name: live clickhouse suite
+    # Ubuntu has Docker preinstalled, which the compose stack in seeds/clickhouse needs.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Get pnpm store directory
+        shell: bash
+        run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v5
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Pull the image up front so the compose health wait isn't dominated
+      # by the image pull on a cold runner.
+      - name: Prefetch clickhouse image
+        run: docker pull clickhouse/clickhouse-server:24.8
+
+      # The script starts the compose stack with `docker compose up -d --wait`
+      # and then runs the suite against it.
+      - name: Run ClickHouse smoke suite
+        run: pnpm --filter @data-peek/desktop smoke:clickhouse
+
+      - name: Show ClickHouse logs on failure
+        if: failure()
+        run: docker compose -f seeds/clickhouse/compose.yml logs --no-color
+
+      - name: Stop ClickHouse
+        if: always()
+        run: docker compose -f seeds/clickhouse/compose.yml down -v
